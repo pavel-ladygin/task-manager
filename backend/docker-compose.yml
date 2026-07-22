@@ -1,0 +1,22 @@
+services:
+  planner-sync:
+    build:
+      context: .
+      network: host
+    container_name: planner-sync
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      PLANNER_SYNC_TOKEN: ${PLANNER_SYNC_TOKEN:?set PLANNER_SYNC_TOKEN in .env}
+      PLANNER_DB_PATH: ${PLANNER_DB_PATH:-/data/planner.db}
+      PLANNER_ADDR: ${PLANNER_ADDR:-:443}
+      PLANNER_TLS_CERT: ${PLANNER_TLS_CERT:-/certs/planner.crt}
+      PLANNER_TLS_KEY: ${PLANNER_TLS_KEY:-/certs/planner.key}
+    volumes:
+      - planner-sync-data:/data
+      - ./certs:/certs:ro
+    mem_limit: 256m
+    cpus: "0.50"
+
+volumes:
+  planner-sync-data:

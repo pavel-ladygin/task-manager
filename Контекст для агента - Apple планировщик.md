@@ -25,7 +25,7 @@ SwiftUI Multiplatform
 SwiftData
 JSON export/import
 UserNotifications позже
-CloudKit / iCloud Sync позже
+Backend sync через собственный сервер позже
 ```
 
 Почему так:
@@ -34,7 +34,7 @@ CloudKit / iCloud Sync позже
 - SwiftData подходит для локального хранения задач.
 - JSON export/import нужен как резервная копия на раннем этапе.
 - UserNotifications нужны позже для напоминаний.
-- CloudKit/iCloud нужен позже для синхронизации Mac и iPhone без собственного backend.
+- Backend sync нужен позже для синхронизации Mac и iPhone через собственный сервер без зависимости от платной Apple Developer Program.
 - Xcode используется как сборщик и инструмент подписи, основная разработка может идти в Cursor/Codex.
 
 Первый этап:
@@ -698,7 +698,7 @@ UserNotifications
 Целевая синхронизация:
 
 ```text
-CloudKit / iCloud
+Backend sync через собственный сервер
 ```
 
 Требования на будущее:
@@ -709,9 +709,9 @@ CloudKit / iCloud
 - конфликты решаются предсказуемо;
 - сначала локальная SwiftData-база;
 - затем JSON backup;
-- только потом CloudKit sync.
+- только потом backend sync.
 
-Не начинать проект с CloudKit.
+Не начинать проект с backend sync. CloudKit/iCloud не является целевым вариантом синхронизации для этого проекта без отдельного явного решения пользователя.
 
 ## Xcode, подпись и установка
 
@@ -727,7 +727,6 @@ Xcode использовать для:
 - настройки Signing & Capabilities;
 - запуска на Mac;
 - запуска на iPhone;
-- включения iCloud/CloudKit позже;
 - включения notifications позже.
 
 Для личного использования на iPhone можно ставить приложение бесплатно через:
@@ -798,11 +797,12 @@ Bundle identifier conflict
 - распознавание русского естественного языка;
 - импорт всего Obsidian vault;
 - сложные markdown-интеграции;
-- CloudKit;
+- backend sync;
+- CloudKit/iCloud sync;
 - уведомления;
 - полноценный iOS UI.
 
-CloudKit, уведомления и iOS важны для будущего, но не входят в первый локальный macOS MVP.
+Backend sync, уведомления и iOS важны для будущего, но не входят в первый локальный macOS MVP. CloudKit/iCloud sync не является целевой синхронизацией проекта без отдельного явного решения.
 
 ## MVP
 
@@ -858,17 +858,17 @@ MVP готов, если:
 10. Довести UX Mac-версии
 11. Позже добавить iOS interface
 12. Позже добавить уведомления
-13. Позже добавить CloudKit/iCloud sync
+13. Позже добавить backend sync через собственный сервер
 ```
 
 Критически важно:
 
 ```text
-не начинать с CloudKit, уведомлений и iOS-подписи
+не начинать с backend sync, уведомлений и iOS-подписи
 ```
 
 Сначала нужно сделать стабильное локальное приложение на Mac.
 
 ## Короткий промпт для агента
 
-Сделай персональный Apple-native планировщик задач на SwiftUI Multiplatform + SwiftData. За функциональную основу возьми только планировщик из моего Obsidian: задачи с полями `title/status/priority/scheduled/due/project/notes/checklist`, списки Inbox/Today/Upcoming/Completed, канбан по статусам, недельный календарь и проекты. Первый этап - локальный macOS MVP с JSON export/import. Не добавляй контакты, дни рождения, медиа, погоду, Pomodoro, time tracking, распознавание естественного языка, Google/Microsoft Calendar и сложные markdown-интеграции. iOS, UserNotifications и CloudKit/iCloud описать в архитектуре как будущие этапы, но не начинать с них.
+Сделай персональный Apple-native планировщик задач на SwiftUI Multiplatform + SwiftData. За функциональную основу возьми только планировщик из моего Obsidian: задачи с полями `title/status/priority/scheduled/due/project/notes/checklist`, списки Inbox/Today/Upcoming/Completed, канбан по статусам, недельный календарь и проекты. Первый этап - локальный macOS MVP с JSON export/import. Не добавляй контакты, дни рождения, медиа, погоду, Pomodoro, time tracking, распознавание естественного языка, Google/Microsoft Calendar и сложные markdown-интеграции. iOS, UserNotifications и backend sync описать в архитектуре как будущие этапы, но не начинать с них. Для синхронизации использовать собственный backend-сервер, а не CloudKit/iCloud.
