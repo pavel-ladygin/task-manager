@@ -9,6 +9,9 @@ struct KanbanColumn: Identifiable {
 }
 
 enum KanbanService {
+    private static let hiddenTagTitles: Set<String> = ["Дни рождения"]
+    private static let hiddenProjectTitles: Set<String> = ["Дни рождения"]
+
     static func columns(
         from tasks: [PlannerTask],
         searchText: String,
@@ -35,6 +38,7 @@ enum KanbanService {
         searchText: String
     ) -> [PlannerTask] {
         tasks
+            .filter { !isHiddenFromKanban($0) }
             .filter { $0.status == status }
             .filter { TaskListService.matchesSearch($0, searchText: searchText) }
             .sorted(by: compareManualOrderThenCreated)
@@ -67,5 +71,16 @@ enum KanbanService {
         }
 
         return lhs.createdAt < rhs.createdAt
+    }
+
+    private static func isHiddenFromKanban(_ task: PlannerTask) -> Bool {
+        if let projectTitle = task.project?.title.trimmingCharacters(in: .whitespacesAndNewlines),
+           hiddenProjectTitles.contains(projectTitle) {
+            return true
+        }
+
+        return task.tags.contains { tag in
+            hiddenTagTitles.contains(tag.title.trimmingCharacters(in: .whitespacesAndNewlines))
+        }
     }
 }

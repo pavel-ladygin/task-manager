@@ -7,6 +7,7 @@ struct IOSKanbanView: View {
     let projects: [Project]
     @Binding var searchText: String
     let moveTask: (PlannerTask, TaskStatus, PlannerTask?, PlannerTask?) -> Void
+    let deleteTask: (PlannerTask) -> Void
     let completeTask: (PlannerTask) -> Void
 
     @State private var selectedTask: PlannerTask?
@@ -49,7 +50,14 @@ struct IOSKanbanView: View {
         }
         .sheet(item: $selectedTask) { task in
             NavigationStack {
-                IOSTaskDetailView(task: task, projects: projects)
+                IOSTaskDetailView(
+                    task: task,
+                    projects: projects,
+                    deleteTask: { task in
+                        deleteTask(task)
+                        selectedTask = nil
+                    }
+                )
             }
         }
     }
@@ -233,10 +241,10 @@ private struct IOSKanbanCardView: View {
             .buttonStyle(.plain)
         }
         .padding(10)
-        .background(PlannerTheme.elevatedBackground, in: RoundedRectangle(cornerRadius: 8))
+        .background(cardBackground, in: RoundedRectangle(cornerRadius: 8))
         .overlay(
             RoundedRectangle(cornerRadius: 8)
-                .stroke(PlannerTheme.border, lineWidth: 0.5)
+                .stroke(borderColor, lineWidth: 0.5)
         )
         .draggable(task.id.uuidString)
         .onDrag {
@@ -253,6 +261,22 @@ private struct IOSKanbanCardView: View {
         case .low, .none:
             PlannerTheme.secondaryText
         }
+    }
+
+    private var cardBackground: AnyShapeStyle {
+        if let preset = task.project?.colorPreset {
+            return AnyShapeStyle(PlannerTheme.projectGradient(preset, opacity: 0.20))
+        }
+
+        return AnyShapeStyle(PlannerTheme.elevatedBackground)
+    }
+
+    private var borderColor: Color {
+        if let preset = task.project?.colorPreset {
+            return PlannerTheme.projectAccent(preset).opacity(0.42)
+        }
+
+        return PlannerTheme.border
     }
 }
 #endif

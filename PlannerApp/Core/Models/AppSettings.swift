@@ -8,7 +8,7 @@ final class AppSettings {
     var hideEmptyKanbanColumns: Bool = false
     var defaultReminderLeadMinutes: Int = 15
     var syncEnabled: Bool = false
-    var syncServerURL: String = "https://91.108.189.121"
+    var syncServerURL: String = "https://91.108.189.121:8443"
     var syncCertificateFingerprint: String = ""
     var syncDeviceID: String = UUID().uuidString
     var syncLastCursor: Int64 = 0
@@ -22,7 +22,7 @@ final class AppSettings {
         hideEmptyKanbanColumns: Bool = false,
         defaultReminderLeadMinutes: Int = 15,
         syncEnabled: Bool = false,
-        syncServerURL: String = "https://91.108.189.121",
+        syncServerURL: String = "https://91.108.189.121:8443",
         syncCertificateFingerprint: String = "",
         syncDeviceID: String = UUID().uuidString,
         syncLastCursor: Int64 = 0,

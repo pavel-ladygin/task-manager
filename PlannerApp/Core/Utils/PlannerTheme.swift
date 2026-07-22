@@ -16,4 +16,88 @@ enum PlannerTheme {
     static let warning = Color(red: 1.000, green: 0.650, blue: 0.180)
     static let danger = Color(red: 1.000, green: 0.310, blue: 0.300)
     static let secondaryText = Color(red: 0.600, green: 0.670, blue: 0.760)
+
+    static func projectAccent(_ preset: ProjectColorPreset) -> Color {
+        switch preset {
+        case .ocean:
+            Color(red: 0.185, green: 0.500, blue: 1.000)
+        case .sky:
+            Color(red: 0.300, green: 0.760, blue: 1.000)
+        case .violet:
+            Color(red: 0.620, green: 0.420, blue: 1.000)
+        case .rose:
+            Color(red: 1.000, green: 0.330, blue: 0.600)
+        case .amber:
+            Color(red: 1.000, green: 0.650, blue: 0.180)
+        case .emerald:
+            Color(red: 0.180, green: 0.760, blue: 0.430)
+        case .mint:
+            Color(red: 0.180, green: 0.850, blue: 0.760)
+        case .graphite:
+            Color(red: 0.520, green: 0.600, blue: 0.700)
+        case .sunset:
+            Color(red: 1.000, green: 0.420, blue: 0.220)
+        case .aurora:
+            Color(red: 0.320, green: 0.840, blue: 0.960)
+        }
+    }
+
+    static func projectGradient(_ preset: ProjectColorPreset, opacity: Double = 0.22) -> LinearGradient {
+        let colors: [Color]
+
+        switch preset {
+        case .ocean:
+            colors = [
+                Color(red: 0.120, green: 0.360, blue: 0.900).opacity(opacity),
+                Color(red: 0.160, green: 0.680, blue: 1.000).opacity(opacity * 0.78)
+            ]
+        case .sky:
+            colors = [
+                Color(red: 0.220, green: 0.660, blue: 1.000).opacity(opacity),
+                Color(red: 0.420, green: 0.900, blue: 1.000).opacity(opacity * 0.78)
+            ]
+        case .violet:
+            colors = [
+                Color(red: 0.460, green: 0.260, blue: 1.000).opacity(opacity),
+                Color(red: 0.820, green: 0.420, blue: 1.000).opacity(opacity * 0.78)
+            ]
+        case .rose:
+            colors = [
+                Color(red: 1.000, green: 0.240, blue: 0.520).opacity(opacity),
+                Color(red: 1.000, green: 0.500, blue: 0.740).opacity(opacity * 0.78)
+            ]
+        case .amber:
+            colors = [
+                Color(red: 1.000, green: 0.560, blue: 0.120).opacity(opacity),
+                Color(red: 1.000, green: 0.820, blue: 0.260).opacity(opacity * 0.78)
+            ]
+        case .emerald:
+            colors = [
+                Color(red: 0.120, green: 0.620, blue: 0.360).opacity(opacity),
+                Color(red: 0.220, green: 0.860, blue: 0.520).opacity(opacity * 0.78)
+            ]
+        case .mint:
+            colors = [
+                Color(red: 0.120, green: 0.740, blue: 0.680).opacity(opacity),
+                Color(red: 0.360, green: 0.940, blue: 0.820).opacity(opacity * 0.78)
+            ]
+        case .graphite:
+            colors = [
+                Color(red: 0.280, green: 0.340, blue: 0.440).opacity(opacity),
+                Color(red: 0.560, green: 0.640, blue: 0.760).opacity(opacity * 0.72)
+            ]
+        case .sunset:
+            colors = [
+                Color(red: 1.000, green: 0.320, blue: 0.180).opacity(opacity),
+                Color(red: 1.000, green: 0.740, blue: 0.260).opacity(opacity * 0.78)
+            ]
+        case .aurora:
+            colors = [
+                Color(red: 0.160, green: 0.820, blue: 0.780).opacity(opacity),
+                Color(red: 0.420, green: 0.440, blue: 1.000).opacity(opacity * 0.78)
+            ]
+        }
+
+        return LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing)
+    }
 }

@@ -12,6 +12,7 @@ struct IOSCalendarView: View {
     let goToNextWeek: () -> Void
     let goToCurrentWeek: () -> Void
     let rescheduleTask: (PlannerTask, Date) -> Void
+    let deleteTask: (PlannerTask) -> Void
     let completeTask: (PlannerTask) -> Void
 
     @State private var selectedTask: PlannerTask?
@@ -41,7 +42,14 @@ struct IOSCalendarView: View {
         .tint(PlannerTheme.accent)
         .sheet(item: $selectedTask) { task in
             NavigationStack {
-                IOSTaskDetailView(task: task, projects: projects)
+                IOSTaskDetailView(
+                    task: task,
+                    projects: projects,
+                    deleteTask: { task in
+                        deleteTask(task)
+                        selectedTask = nil
+                    }
+                )
             }
         }
     }
@@ -274,10 +282,10 @@ private struct IOSCalendarPlacementRow: View {
             .buttonStyle(.plain)
         }
         .padding(10)
-        .background(PlannerTheme.elevatedBackground, in: RoundedRectangle(cornerRadius: 8))
+        .background(cardBackground, in: RoundedRectangle(cornerRadius: 8))
         .overlay(
             RoundedRectangle(cornerRadius: 8)
-                .stroke(placement.kind == .due ? PlannerTheme.danger.opacity(0.35) : PlannerTheme.accent.opacity(0.35), lineWidth: 0.5)
+                .stroke(borderColor, lineWidth: 0.5)
         )
         .onDrag {
             NSItemProvider(object: placement.task.id.uuidString as NSString)
@@ -294,6 +302,30 @@ private struct IOSCalendarPlacementRow: View {
         let end = String(format: "%02d:%02d", endMinute / 60, endMinute % 60)
 
         return "\(start) - \(end)"
+    }
+
+    private var cardBackground: AnyShapeStyle {
+        if placement.kind == .due {
+            return AnyShapeStyle(PlannerTheme.danger.opacity(0.14))
+        }
+
+        if let preset = placement.task.project?.colorPreset {
+            return AnyShapeStyle(PlannerTheme.projectGradient(preset, opacity: 0.20))
+        }
+
+        return AnyShapeStyle(PlannerTheme.elevatedBackground)
+    }
+
+    private var borderColor: Color {
+        if placement.kind == .due {
+            return PlannerTheme.danger.opacity(0.35)
+        }
+
+        if let preset = placement.task.project?.colorPreset {
+            return PlannerTheme.projectAccent(preset).opacity(0.42)
+        }
+
+        return PlannerTheme.accent.opacity(0.35)
     }
 }
 #endif

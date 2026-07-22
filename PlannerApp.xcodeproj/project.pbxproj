@@ -9,14 +9,12 @@
 /* Begin PBXBuildFile section */
 		100000000000000000000101 /* TaskStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000001 /* TaskStatus.swift */; };
 		100000000000000000000102 /* Priority.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000002 /* Priority.swift */; };
-		10000000000000000000011E /* TaskRecurrence.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000001E /* TaskRecurrence.swift */; };
 		100000000000000000000103 /* ProjectStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000003 /* ProjectStatus.swift */; };
 		100000000000000000000104 /* PlannerTask.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000004 /* PlannerTask.swift */; };
 		100000000000000000000105 /* Project.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000005 /* Project.swift */; };
 		100000000000000000000106 /* Tag.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000006 /* Tag.swift */; };
 		100000000000000000000107 /* ChecklistItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000007 /* ChecklistItem.swift */; };
 		100000000000000000000108 /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000008 /* AppSettings.swift */; };
-		100000000000000000000124 /* SyncTombstone.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000024 /* SyncTombstone.swift */; };
 		100000000000000000000109 /* PlannerDataService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000009 /* PlannerDataService.swift */; };
 		10000000000000000000010A /* PlannerSchema.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000000A /* PlannerSchema.swift */; };
 		10000000000000000000010B /* PlannerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000000B /* PlannerApp.swift */; };
@@ -29,28 +27,30 @@
 		100000000000000000000113 /* BackupService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000013 /* BackupService.swift */; };
 		100000000000000000000114 /* AppTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000014 /* AppTheme.swift */; };
 		100000000000000000000115 /* NotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000015 /* NotificationService.swift */; };
-		100000000000000000000125 /* SyncDTO.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000025 /* SyncDTO.swift */; };
-		100000000000000000000126 /* SyncClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000026 /* SyncClient.swift */; };
-		100000000000000000000127 /* SyncService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000027 /* SyncService.swift */; };
-		10000000000000000000011B /* PlannerTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000001B /* PlannerTheme.swift */; };
-		100000000000000000000128 /* KeychainService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000028 /* KeychainService.swift */; };
 		100000000000000000000116 /* IOSMainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000016 /* IOSMainView.swift */; };
 		100000000000000000000117 /* IOSTaskListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000017 /* IOSTaskListView.swift */; };
 		100000000000000000000118 /* IOSTaskDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000018 /* IOSTaskDetailView.swift */; };
 		100000000000000000000119 /* IOSProjectsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000019 /* IOSProjectsView.swift */; };
 		10000000000000000000011A /* IOSSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000001A /* IOSSettingsView.swift */; };
+		10000000000000000000011B /* PlannerTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000001B /* PlannerTheme.swift */; };
 		10000000000000000000011C /* IOSKanbanView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000001C /* IOSKanbanView.swift */; };
 		10000000000000000000011D /* IOSCalendarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000001D /* IOSCalendarView.swift */; };
+		10000000000000000000011E /* TaskRecurrence.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000001E /* TaskRecurrence.swift */; };
+		10000000000000000000012A /* ProjectColorPreset.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000002A /* ProjectColorPreset.swift */; };
+		100000000000000000000124 /* SyncTombstone.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000024 /* SyncTombstone.swift */; };
+		100000000000000000000125 /* SyncDTO.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000025 /* SyncDTO.swift */; };
+		100000000000000000000126 /* SyncClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000026 /* SyncClient.swift */; };
+		100000000000000000000127 /* SyncService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000027 /* SyncService.swift */; };
+		100000000000000000000128 /* KeychainService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000028 /* KeychainService.swift */; };
+		100000000000000000000129 /* AutoSyncService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000029 /* AutoSyncService.swift */; };
 		200000000000000000000101 /* TaskStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000001 /* TaskStatus.swift */; };
 		200000000000000000000102 /* Priority.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000002 /* Priority.swift */; };
-		20000000000000000000011E /* TaskRecurrence.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000001E /* TaskRecurrence.swift */; };
 		200000000000000000000103 /* ProjectStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000003 /* ProjectStatus.swift */; };
 		200000000000000000000104 /* PlannerTask.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000004 /* PlannerTask.swift */; };
 		200000000000000000000105 /* Project.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000005 /* Project.swift */; };
 		200000000000000000000106 /* Tag.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000006 /* Tag.swift */; };
 		200000000000000000000107 /* ChecklistItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000007 /* ChecklistItem.swift */; };
 		200000000000000000000108 /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000008 /* AppSettings.swift */; };
-		200000000000000000000124 /* SyncTombstone.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000024 /* SyncTombstone.swift */; };
 		200000000000000000000109 /* PlannerDataService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000009 /* PlannerDataService.swift */; };
 		20000000000000000000010A /* PlannerSchema.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000000A /* PlannerSchema.swift */; };
 		20000000000000000000010B /* PlannerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000000B /* PlannerApp.swift */; };
@@ -63,31 +63,33 @@
 		200000000000000000000113 /* BackupService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000013 /* BackupService.swift */; };
 		200000000000000000000114 /* AppTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000014 /* AppTheme.swift */; };
 		200000000000000000000115 /* NotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000015 /* NotificationService.swift */; };
-		200000000000000000000125 /* SyncDTO.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000025 /* SyncDTO.swift */; };
-		200000000000000000000126 /* SyncClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000026 /* SyncClient.swift */; };
-		200000000000000000000127 /* SyncService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000027 /* SyncService.swift */; };
-		20000000000000000000011B /* PlannerTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000001B /* PlannerTheme.swift */; };
-		200000000000000000000128 /* KeychainService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000028 /* KeychainService.swift */; };
 		200000000000000000000116 /* IOSMainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000016 /* IOSMainView.swift */; };
 		200000000000000000000117 /* IOSTaskListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000017 /* IOSTaskListView.swift */; };
 		200000000000000000000118 /* IOSTaskDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000018 /* IOSTaskDetailView.swift */; };
 		200000000000000000000119 /* IOSProjectsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000019 /* IOSProjectsView.swift */; };
 		20000000000000000000011A /* IOSSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000001A /* IOSSettingsView.swift */; };
+		20000000000000000000011B /* PlannerTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000001B /* PlannerTheme.swift */; };
 		20000000000000000000011C /* IOSKanbanView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000001C /* IOSKanbanView.swift */; };
 		20000000000000000000011D /* IOSCalendarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000001D /* IOSCalendarView.swift */; };
+		20000000000000000000011E /* TaskRecurrence.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000001E /* TaskRecurrence.swift */; };
+		20000000000000000000012A /* ProjectColorPreset.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000002A /* ProjectColorPreset.swift */; };
+		200000000000000000000124 /* SyncTombstone.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000024 /* SyncTombstone.swift */; };
+		200000000000000000000125 /* SyncDTO.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000025 /* SyncDTO.swift */; };
+		200000000000000000000126 /* SyncClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000026 /* SyncClient.swift */; };
+		200000000000000000000127 /* SyncService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000027 /* SyncService.swift */; };
+		200000000000000000000128 /* KeychainService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000028 /* KeychainService.swift */; };
+		200000000000000000000129 /* AutoSyncService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000029 /* AutoSyncService.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		100000000000000000000001 /* TaskStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskStatus.swift; sourceTree = "<group>"; };
 		100000000000000000000002 /* Priority.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Priority.swift; sourceTree = "<group>"; };
-		10000000000000000000001E /* TaskRecurrence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskRecurrence.swift; sourceTree = "<group>"; };
 		100000000000000000000003 /* ProjectStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectStatus.swift; sourceTree = "<group>"; };
 		100000000000000000000004 /* PlannerTask.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerTask.swift; sourceTree = "<group>"; };
 		100000000000000000000005 /* Project.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Project.swift; sourceTree = "<group>"; };
 		100000000000000000000006 /* Tag.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tag.swift; sourceTree = "<group>"; };
 		100000000000000000000007 /* ChecklistItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChecklistItem.swift; sourceTree = "<group>"; };
 		100000000000000000000008 /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
-		100000000000000000000024 /* SyncTombstone.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncTombstone.swift; sourceTree = "<group>"; };
 		100000000000000000000009 /* PlannerDataService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerDataService.swift; sourceTree = "<group>"; };
 		10000000000000000000000A /* PlannerSchema.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerSchema.swift; sourceTree = "<group>"; };
 		10000000000000000000000B /* PlannerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerApp.swift; sourceTree = "<group>"; };
@@ -100,20 +102,24 @@
 		100000000000000000000013 /* BackupService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupService.swift; sourceTree = "<group>"; };
 		100000000000000000000014 /* AppTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTheme.swift; sourceTree = "<group>"; };
 		100000000000000000000015 /* NotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationService.swift; sourceTree = "<group>"; };
-		100000000000000000000025 /* SyncDTO.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncDTO.swift; sourceTree = "<group>"; };
-		100000000000000000000026 /* SyncClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncClient.swift; sourceTree = "<group>"; };
-		100000000000000000000027 /* SyncService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncService.swift; sourceTree = "<group>"; };
-		10000000000000000000001B /* PlannerTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerTheme.swift; sourceTree = "<group>"; };
-		100000000000000000000028 /* KeychainService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainService.swift; sourceTree = "<group>"; };
 		100000000000000000000016 /* IOSMainView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IOSMainView.swift; sourceTree = "<group>"; };
 		100000000000000000000017 /* IOSTaskListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IOSTaskListView.swift; sourceTree = "<group>"; };
 		100000000000000000000018 /* IOSTaskDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IOSTaskDetailView.swift; sourceTree = "<group>"; };
 		100000000000000000000019 /* IOSProjectsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IOSProjectsView.swift; sourceTree = "<group>"; };
 		10000000000000000000001A /* IOSSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IOSSettingsView.swift; sourceTree = "<group>"; };
+		10000000000000000000001B /* PlannerTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerTheme.swift; sourceTree = "<group>"; };
 		10000000000000000000001C /* IOSKanbanView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IOSKanbanView.swift; sourceTree = "<group>"; };
 		10000000000000000000001D /* IOSCalendarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IOSCalendarView.swift; sourceTree = "<group>"; };
+		10000000000000000000001E /* TaskRecurrence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskRecurrence.swift; sourceTree = "<group>"; };
+		10000000000000000000002A /* ProjectColorPreset.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectColorPreset.swift; sourceTree = "<group>"; };
 		100000000000000000000020 /* PlannerApp-macOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "PlannerApp-macOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		100000000000000000000021 /* PlannerApp-iOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "PlannerApp-iOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		100000000000000000000024 /* SyncTombstone.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncTombstone.swift; sourceTree = "<group>"; };
+		100000000000000000000025 /* SyncDTO.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncDTO.swift; sourceTree = "<group>"; };
+		100000000000000000000026 /* SyncClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncClient.swift; sourceTree = "<group>"; };
+		100000000000000000000027 /* SyncService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncService.swift; sourceTree = "<group>"; };
+		100000000000000000000028 /* KeychainService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainService.swift; sourceTree = "<group>"; };
+		100000000000000000000029 /* AutoSyncService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoSyncService.swift; sourceTree = "<group>"; };
 		1000000000000000000000E0 /* PlannerApp-macOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "PlannerApp-macOS.entitlements"; sourceTree = "<group>"; };
 		1000000000000000000000E1 /* PlannerApp-iOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "PlannerApp-iOS.entitlements"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -180,6 +186,7 @@
 				100000000000000000000001 /* TaskStatus.swift */,
 				100000000000000000000002 /* Priority.swift */,
 				10000000000000000000001E /* TaskRecurrence.swift */,
+				10000000000000000000002A /* ProjectColorPreset.swift */,
 				100000000000000000000003 /* ProjectStatus.swift */,
 			);
 			path = Models;
@@ -206,16 +213,6 @@
 				100000000000000000000028 /* KeychainService.swift */,
 			);
 			path = Utils;
-			sourceTree = "<group>";
-		};
-		100000000000000000000049 /* Sync */ = {
-			isa = PBXGroup;
-			children = (
-				100000000000000000000025 /* SyncDTO.swift */,
-				100000000000000000000026 /* SyncClient.swift */,
-				100000000000000000000027 /* SyncService.swift */,
-			);
-			path = Sync;
 			sourceTree = "<group>";
 		};
 		100000000000000000000046 /* Features */ = {
@@ -249,6 +246,17 @@
 				1000000000000000000000E1 /* PlannerApp-iOS.entitlements */,
 			);
 			path = iOS;
+			sourceTree = "<group>";
+		};
+		100000000000000000000049 /* Sync */ = {
+			isa = PBXGroup;
+			children = (
+				100000000000000000000025 /* SyncDTO.swift */,
+				100000000000000000000026 /* SyncClient.swift */,
+				100000000000000000000027 /* SyncService.swift */,
+				100000000000000000000029 /* AutoSyncService.swift */,
+			);
+			path = Sync;
 			sourceTree = "<group>";
 		};
 		100000000000000000000050 /* Products */ = {
@@ -359,6 +367,7 @@
 				100000000000000000000101 /* TaskStatus.swift in Sources */,
 				100000000000000000000102 /* Priority.swift in Sources */,
 				10000000000000000000011E /* TaskRecurrence.swift in Sources */,
+				10000000000000000000012A /* ProjectColorPreset.swift in Sources */,
 				100000000000000000000103 /* ProjectStatus.swift in Sources */,
 				100000000000000000000104 /* PlannerTask.swift in Sources */,
 				100000000000000000000105 /* Project.swift in Sources */,
@@ -376,6 +385,7 @@
 				100000000000000000000125 /* SyncDTO.swift in Sources */,
 				100000000000000000000126 /* SyncClient.swift in Sources */,
 				100000000000000000000127 /* SyncService.swift in Sources */,
+				100000000000000000000129 /* AutoSyncService.swift in Sources */,
 				10000000000000000000010A /* PlannerSchema.swift in Sources */,
 				10000000000000000000011B /* PlannerTheme.swift in Sources */,
 				100000000000000000000128 /* KeychainService.swift in Sources */,
@@ -400,6 +410,7 @@
 				200000000000000000000101 /* TaskStatus.swift in Sources */,
 				200000000000000000000102 /* Priority.swift in Sources */,
 				20000000000000000000011E /* TaskRecurrence.swift in Sources */,
+				20000000000000000000012A /* ProjectColorPreset.swift in Sources */,
 				200000000000000000000103 /* ProjectStatus.swift in Sources */,
 				200000000000000000000104 /* PlannerTask.swift in Sources */,
 				200000000000000000000105 /* Project.swift in Sources */,
@@ -417,6 +428,7 @@
 				200000000000000000000125 /* SyncDTO.swift in Sources */,
 				200000000000000000000126 /* SyncClient.swift in Sources */,
 				200000000000000000000127 /* SyncService.swift in Sources */,
+				200000000000000000000129 /* AutoSyncService.swift in Sources */,
 				20000000000000000000010A /* PlannerSchema.swift in Sources */,
 				20000000000000000000011B /* PlannerTheme.swift in Sources */,
 				200000000000000000000128 /* KeychainService.swift in Sources */,
@@ -442,10 +454,11 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = "";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = R6R5P8H5UP;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = PlannerApp/macOS/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Planner;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
@@ -466,7 +479,8 @@
 				DEVELOPMENT_TEAM = R6R5P8H5UP;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = PlannerApp/macOS/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Planner;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
@@ -483,12 +497,14 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = "";
 				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = R6R5P8H5UP;
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = PlannerApp/iOS/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Planner;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.pavel.planner;
+				PRODUCT_BUNDLE_IDENTIFIER = com.pavel.planner.ios.ladyginpavel;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -503,12 +519,14 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = "";
 				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = R6R5P8H5UP;
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = PlannerApp/iOS/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Planner;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.pavel.planner;
+				PRODUCT_BUNDLE_IDENTIFIER = com.pavel.planner.ios.ladyginpavel;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";

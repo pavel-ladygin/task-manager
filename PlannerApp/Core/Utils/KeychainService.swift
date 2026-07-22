@@ -24,11 +24,11 @@ enum KeychainService {
             return ""
         }
 
-        return token
+        return token.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     static func saveSyncToken(_ token: String) throws {
-        let data = Data(token.utf8)
+        let data = Data(token.trimmingCharacters(in: .whitespacesAndNewlines).utf8)
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,

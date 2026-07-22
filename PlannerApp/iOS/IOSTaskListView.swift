@@ -121,7 +121,14 @@ struct IOSTaskListView: View {
         }
         .sheet(item: $selectedTask) { task in
             NavigationStack {
-                IOSTaskDetailView(task: task, projects: projects)
+                IOSTaskDetailView(
+                    task: task,
+                    projects: projects,
+                    deleteTask: { task in
+                        deleteTask?(task)
+                        selectedTask = nil
+                    }
+                )
             }
         }
     }
@@ -218,7 +225,17 @@ private struct IOSTaskRow: View {
             }
             .buttonStyle(.plain)
         }
+        .padding(.vertical, 4)
+        .background(rowBackground, in: RoundedRectangle(cornerRadius: 8))
         .listRowBackground(PlannerTheme.rowBackground)
+    }
+
+    private var rowBackground: AnyShapeStyle {
+        if let preset = task.project?.colorPreset {
+            return AnyShapeStyle(PlannerTheme.projectGradient(preset, opacity: 0.18))
+        }
+
+        return AnyShapeStyle(Color.clear)
     }
 }
 #endif

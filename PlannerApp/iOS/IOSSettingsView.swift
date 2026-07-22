@@ -17,6 +17,8 @@ struct IOSSettingsView: View {
     let testSyncConnection: (AppSettings) -> Void
     let bootstrapSync: (AppSettings) -> Void
     let syncNow: (AppSettings) -> Void
+    let completedTaskCount: Int
+    let clearCompletedTasks: () throws -> Int
     let importBackup: (Data) throws -> Void
     let exportBackup: () throws -> Data
 
@@ -24,6 +26,7 @@ struct IOSSettingsView: View {
     @State private var backupDocument = JSONBackupDocument()
     @State private var isExportingBackup = false
     @State private var isImportingBackup = false
+    @State private var isClearCompletedConfirmationPresented = false
     @State private var statusMessage: String?
     @State private var errorMessage: String?
 
@@ -88,6 +91,17 @@ struct IOSSettingsView: View {
                 } label: {
                     Label("Импорт JSON", systemImage: "square.and.arrow.down")
                 }
+            }
+
+            Section("Очистка") {
+                LabeledContent("Выполненные задачи", value: "\(completedTaskCount)")
+
+                Button(role: .destructive) {
+                    isClearCompletedConfirmationPresented = true
+                } label: {
+                    Label("Очистить выполненные задачи", systemImage: "trash")
+                }
+                .disabled(completedTaskCount == 0)
             }
 
             Section("Синхронизация") {
@@ -175,6 +189,19 @@ struct IOSSettingsView: View {
         ) { result in
             importJSON(result)
         }
+        .confirmationDialog(
+            "Очистить выполненные задачи?",
+            isPresented: $isClearCompletedConfirmationPresented,
+            titleVisibility: .visible
+        ) {
+            Button("Удалить \(completedTaskCount)", role: .destructive) {
+                clearCompleted()
+            }
+
+            Button("Отмена", role: .cancel) {}
+        } message: {
+            Text("Будут удалены задачи со статусом «Выполнено». Удаление попадет в синхронизацию.")
+        }
         .alert("Планировщик", isPresented: statusBinding) {
             Button("ОК", role: .cancel) {
                 statusMessage = nil
@@ -246,6 +273,17 @@ struct IOSSettingsView: View {
 
             try importBackup(Data(contentsOf: url))
             statusMessage = "JSON-резервная копия импортирована."
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func clearCompleted() {
+        do {
+            let deletedCount = try clearCompletedTasks()
+            statusMessage = deletedCount == 0
+                ? "Выполненных задач для очистки нет."
+                : "Удалено выполненных задач: \(deletedCount)."
         } catch {
             errorMessage = error.localizedDescription
         }

@@ -7,9 +7,11 @@ struct IOSTaskDetailView: View {
     @Environment(\.modelContext) private var modelContext
     @Bindable var task: PlannerTask
     let projects: [Project]
+    let deleteTask: (PlannerTask) -> Void
 
     @State private var newChecklistTitle = ""
     @State private var errorMessage: String?
+    @State private var isDeleteConfirmationPresented = false
 
     var body: some View {
         Form {
@@ -81,6 +83,14 @@ struct IOSTaskDetailView: View {
                 LabeledContent("Обновлена", value: task.updatedAt.formatted(date: .abbreviated, time: .shortened))
                 LabeledContent("Завершена", value: task.completedAt?.formatted(date: .abbreviated, time: .shortened) ?? "Не завершена")
             }
+
+            Section("Удаление") {
+                Button(role: .destructive) {
+                    isDeleteConfirmationPresented = true
+                } label: {
+                    Label("Удалить задачу", systemImage: "trash")
+                }
+            }
         }
         .scrollContentBackground(.hidden)
         .background(PlannerTheme.windowBackground)
@@ -92,6 +102,20 @@ struct IOSTaskDetailView: View {
                     dismiss()
                 }
             }
+        }
+        .confirmationDialog(
+            "Удалить задачу?",
+            isPresented: $isDeleteConfirmationPresented,
+            titleVisibility: .visible
+        ) {
+            Button("Удалить", role: .destructive) {
+                deleteTask(task)
+                dismiss()
+            }
+
+            Button("Отмена", role: .cancel) {}
+        } message: {
+            Text("Задача будет удалена с этого устройства и попадет в синхронизацию удаления.")
         }
         .alert("Ошибка планировщика", isPresented: errorBinding) {
             Button("ОК", role: .cancel) {

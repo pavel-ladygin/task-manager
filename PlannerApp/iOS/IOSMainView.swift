@@ -4,6 +4,7 @@ import SwiftUI
 #if os(iOS)
 struct IOSMainView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.scenePhase) private var scenePhase
     @Query(sort: \PlannerTask.createdAt, order: .forward) private var tasks: [PlannerTask]
     @Query(sort: \Project.createdAt, order: .forward) private var projects: [Project]
     @Query(sort: \AppSettings.createdAt, order: .forward) private var appSettings: [AppSettings]
@@ -15,6 +16,8 @@ struct IOSMainView: View {
     @State private var selectedCalendarDate = Date.now
     @State private var syncToken = ""
     @State private var syncStatus = "Не синхронизировано"
+    @State private var autoSyncTask: Task<Void, Never>?
+    @State private var isAutoSyncing = false
 
     private var currentSettings: AppSettings? {
         appSettings.first
@@ -52,6 +55,7 @@ struct IOSMainView: View {
                     projects: projects,
                     searchText: $searchText,
                     moveTask: moveTask,
+                    deleteTask: deleteTask,
                     completeTask: completeTask
                 )
             }
@@ -76,6 +80,7 @@ struct IOSMainView: View {
                     goToNextWeek: { moveSelectedCalendarWeek(by: 1) },
                     goToCurrentWeek: goToCurrentCalendarWeek,
                     rescheduleTask: rescheduleTask,
+                    deleteTask: deleteTask,
                     completeTask: completeTask
                 )
             }
@@ -101,6 +106,23 @@ struct IOSMainView: View {
         .onAppear {
             ensureAppSettings()
             syncToken = KeychainService.loadSyncToken()
+            triggerAutoSyncNow(reason: "Запуск")
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            switch newPhase {
+            case .active:
+                triggerAutoSyncNow(reason: "Вход")
+            case .inactive, .background:
+                triggerAutoSyncNow(reason: "Выход")
+            @unknown default:
+                break
+            }
+        }
+        .onChange(of: taskSyncSignature) { _, _ in
+            scheduleAutoSync(reason: "Изменения задач")
+        }
+        .onChange(of: projectSyncSignature) { _, _ in
+            scheduleAutoSync(reason: "Изменения проектов")
         }
     }
 
@@ -116,6 +138,7 @@ struct IOSMainView: View {
                             searchText: $searchText,
                             createProject: createProject,
                             deleteProject: deleteProject,
+                            deleteTask: deleteTask,
                             completeTask: completeTask
                         )
                     } label: {
@@ -137,6 +160,8 @@ struct IOSMainView: View {
                             testSyncConnection: testSyncConnection,
                             bootstrapSync: bootstrapSync,
                             syncNow: syncNow,
+                            completedTaskCount: completedTaskCount,
+                            clearCompletedTasks: clearCompletedTasks,
                             importBackup: importBackup,
                             exportBackup: exportBackup
                         )
@@ -180,6 +205,35 @@ struct IOSMainView: View {
             get: { errorMessage != nil },
             set: { if !$0 { errorMessage = nil } }
         )
+    }
+
+    private var taskSyncSignature: String {
+        tasks
+            .map { task in
+                [
+                    task.id.uuidString,
+                    String(task.updatedAt.timeIntervalSinceReferenceDate),
+                    task.project?.id.uuidString ?? "none",
+                    String(task.checklistItems.count)
+                ].joined(separator: ":")
+            }
+            .joined(separator: "|")
+    }
+
+    private var projectSyncSignature: String {
+        projects
+            .map { project in
+                [
+                    project.id.uuidString,
+                    String(project.updatedAt.timeIntervalSinceReferenceDate),
+                    project.status.rawValue
+                ].joined(separator: ":")
+            }
+            .joined(separator: "|")
+    }
+
+    private var completedTaskCount: Int {
+        tasks.filter { $0.status == .done }.count
     }
 
     private var calendarWeek: CalendarWeek {
@@ -241,6 +295,7 @@ struct IOSMainView: View {
                 context: modelContext,
                 status: .inbox
             )
+            scheduleAutoSync(reason: "Создана задача")
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -249,9 +304,21 @@ struct IOSMainView: View {
     private func deleteTask(_ task: PlannerTask) {
         do {
             try PlannerDataService.deleteTask(task, context: modelContext)
+            scheduleAutoSync(reason: "Удалена задача")
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    @discardableResult
+    private func clearCompletedTasks() throws -> Int {
+        let deletedCount = try PlannerDataService.deleteCompletedTasks(from: tasks, context: modelContext)
+
+        if deletedCount > 0 {
+            scheduleAutoSync(reason: "Очищены выполненные задачи")
+        }
+
+        return deletedCount
     }
 
     private func completeTask(_ task: PlannerTask) {
@@ -261,6 +328,7 @@ struct IOSMainView: View {
 
         do {
             try PlannerDataService.setTaskStatus(task, status: .done, context: modelContext)
+            scheduleAutoSync(reason: "Задача выполнена")
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -280,6 +348,7 @@ struct IOSMainView: View {
                 before: nextTask,
                 context: modelContext
             )
+            scheduleAutoSync(reason: "Задача перемещена")
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -292,6 +361,7 @@ struct IOSMainView: View {
                 to: scheduled,
                 context: modelContext
             )
+            scheduleAutoSync(reason: "Задача перенесена")
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -312,6 +382,7 @@ struct IOSMainView: View {
     private func createProject(_ title: String) {
         do {
             try PlannerDataService.createProject(title: title, context: modelContext)
+            scheduleAutoSync(reason: "Создан проект")
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -320,6 +391,7 @@ struct IOSMainView: View {
     private func deleteProject(_ project: Project) {
         do {
             try PlannerDataService.deleteProject(project, context: modelContext)
+            scheduleAutoSync(reason: "Удален проект")
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -328,6 +400,7 @@ struct IOSMainView: View {
     private func setTheme(_ theme: AppTheme, settings: AppSettings) {
         do {
             try PlannerDataService.setTheme(theme, settings: settings, context: modelContext)
+            scheduleAutoSync(reason: "Изменена тема")
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -340,6 +413,7 @@ struct IOSMainView: View {
                 settings: settings,
                 context: modelContext
             )
+            scheduleAutoSync(reason: "Изменены настройки")
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -352,6 +426,7 @@ struct IOSMainView: View {
                 settings: settings,
                 context: modelContext
             )
+            scheduleAutoSync(reason: "Изменены уведомления")
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -360,6 +435,9 @@ struct IOSMainView: View {
     private func setSyncEnabled(_ isEnabled: Bool, settings: AppSettings) {
         do {
             try PlannerDataService.setSyncEnabled(isEnabled, settings: settings, context: modelContext)
+            if isEnabled {
+                triggerAutoSyncNow(reason: "Синхронизация включена")
+            }
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -429,6 +507,7 @@ struct IOSMainView: View {
 
     private func importBackup(_ data: Data) throws {
         try BackupService.importData(data, context: modelContext)
+        scheduleAutoSync(reason: "Импортирована резервная копия")
     }
 
     private func ensureAppSettings() {
@@ -436,6 +515,70 @@ struct IOSMainView: View {
             try PlannerDataService.ensureAppSettings(context: modelContext)
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    private func scheduleAutoSync(reason: String) {
+        guard AutoSyncService.canSync(settings: currentSettings, token: syncToken) else {
+            return
+        }
+
+        autoSyncTask?.cancel()
+        autoSyncTask = Task {
+            do {
+                try await Task.sleep(nanoseconds: AutoSyncService.debounceDelayNanoseconds)
+            } catch {
+                return
+            }
+
+            guard !Task.isCancelled else {
+                return
+            }
+
+            await performAutoSync(reason: reason, showErrors: false)
+        }
+    }
+
+    private func triggerAutoSyncNow(reason: String) {
+        guard AutoSyncService.canSync(settings: currentSettings, token: syncToken) else {
+            return
+        }
+
+        autoSyncTask?.cancel()
+        autoSyncTask = nil
+        Task {
+            await performAutoSync(reason: reason, showErrors: false)
+        }
+    }
+
+    private func performAutoSync(reason: String, showErrors: Bool) async {
+        guard
+            let settings = currentSettings,
+            AutoSyncService.canSync(settings: settings, token: syncToken)
+        else {
+            return
+        }
+
+        guard !isAutoSyncing else {
+            scheduleAutoSync(reason: reason)
+            return
+        }
+
+        isAutoSyncing = true
+        defer { isAutoSyncing = false }
+
+        do {
+            let result = try await AutoSyncService.syncNow(
+                context: modelContext,
+                settings: settings,
+                token: syncToken
+            )
+            syncStatus = "Автосинк OK: отправлено \(result.pushed), получено \(result.pulled), cursor \(result.cursor)"
+        } catch {
+            syncStatus = "Автосинк ошибка: \(error.localizedDescription)"
+            if showErrors {
+                errorMessage = error.localizedDescription
+            }
         }
     }
 }

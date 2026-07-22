@@ -8,6 +8,7 @@ struct IOSProjectsView: View {
     @Binding var searchText: String
     let createProject: (String) -> Void
     let deleteProject: (Project) -> Void
+    let deleteTask: (PlannerTask) -> Void
     let completeTask: (PlannerTask) -> Void
 
     @State private var newProjectTitle = ""
@@ -39,12 +40,19 @@ struct IOSProjectsView: View {
                                 searchText: searchText
                             ),
                             progress: TaskListService.progress(for: project, tasks: tasks),
+                            deleteTask: deleteTask,
                             completeTask: completeTask
                         )
                     } label: {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(project.title)
-                                .lineLimit(1)
+                            HStack(spacing: 8) {
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(PlannerTheme.projectGradient(project.colorPreset, opacity: 0.9))
+                                    .frame(width: 22, height: 14)
+
+                                Text(project.title)
+                                    .lineLimit(1)
+                            }
 
                             Text(project.status.displayName)
                                 .font(.caption)
@@ -87,13 +95,16 @@ struct IOSProjectsView: View {
 }
 
 private struct IOSProjectPageView: View {
-    let project: Project
+    @Environment(\.modelContext) private var modelContext
+    @Bindable var project: Project
     let projects: [Project]
     let tasks: [PlannerTask]
     let progress: ProjectProgress
+    let deleteTask: (PlannerTask) -> Void
     let completeTask: (PlannerTask) -> Void
 
     @State private var selectedTask: PlannerTask?
+    @State private var errorMessage: String?
 
     private var activeTasks: [PlannerTask] {
         tasks.filter(TaskListService.isActive)
@@ -107,6 +118,13 @@ private struct IOSProjectPageView: View {
         List {
             Section {
                 VStack(alignment: .leading, spacing: 10) {
+                    Picker("Цвет проекта", selection: colorBinding) {
+                        ForEach(ProjectColorPreset.allCases) { color in
+                            Text(color.displayName).tag(color)
+                        }
+                    }
+                    .pickerStyle(.menu)
+
                     Text(project.notes.isEmpty ? "Нет заметок" : project.notes)
                         .foregroundStyle(PlannerTheme.secondaryText)
                         .lineLimit(4)
@@ -152,11 +170,45 @@ private struct IOSProjectPageView: View {
         .scrollContentBackground(.hidden)
         .background(PlannerTheme.windowBackground)
         .tint(PlannerTheme.accent)
+        .alert("Ошибка планировщика", isPresented: errorBinding) {
+            Button("ОК", role: .cancel) {
+                errorMessage = nil
+            }
+        } message: {
+            Text(errorMessage ?? "")
+        }
         .sheet(item: $selectedTask) { task in
             NavigationStack {
-                IOSTaskDetailView(task: task, projects: projects)
+                IOSTaskDetailView(
+                    task: task,
+                    projects: projects,
+                    deleteTask: { task in
+                        deleteTask(task)
+                        selectedTask = nil
+                    }
+                )
             }
         }
+    }
+
+    private var colorBinding: Binding<ProjectColorPreset> {
+        Binding(
+            get: { project.colorPreset },
+            set: { newValue in
+                do {
+                    try PlannerDataService.setProjectColor(newValue, project: project, context: modelContext)
+                } catch {
+                    errorMessage = error.localizedDescription
+                }
+            }
+        )
+    }
+
+    private var errorBinding: Binding<Bool> {
+        Binding(
+            get: { errorMessage != nil },
+            set: { if !$0 { errorMessage = nil } }
+        )
     }
 }
 
@@ -195,7 +247,17 @@ private struct IOSProjectTaskRow: View {
             }
             .buttonStyle(.plain)
         }
+        .padding(.vertical, 4)
+        .background(rowBackground, in: RoundedRectangle(cornerRadius: 8))
         .listRowBackground(PlannerTheme.rowBackground)
+    }
+
+    private var rowBackground: AnyShapeStyle {
+        if let preset = task.project?.colorPreset {
+            return AnyShapeStyle(PlannerTheme.projectGradient(preset, opacity: 0.18))
+        }
+
+        return AnyShapeStyle(Color.clear)
     }
 }
 #endif

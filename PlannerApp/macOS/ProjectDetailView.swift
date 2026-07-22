@@ -19,6 +19,16 @@ struct ProjectDetailView: View {
                         Text(status.displayName).tag(status)
                     }
                 }
+
+                Picker("Цвет", selection: colorBinding) {
+                    ForEach(ProjectColorPreset.allCases) { color in
+                        HStack {
+                            ProjectColorSwatch(preset: color)
+                            Text(color.displayName)
+                        }
+                        .tag(color)
+                    }
+                }
             }
 
             Section("Заметки") {
@@ -56,6 +66,19 @@ struct ProjectDetailView: View {
         )
     }
 
+    private var colorBinding: Binding<ProjectColorPreset> {
+        Binding(
+            get: { project.colorPreset },
+            set: { newValue in
+                do {
+                    try PlannerDataService.setProjectColor(newValue, project: project, context: modelContext)
+                } catch {
+                    errorMessage = error.localizedDescription
+                }
+            }
+        )
+    }
+
     private var errorBinding: Binding<Bool> {
         Binding(
             get: { errorMessage != nil },
@@ -69,6 +92,20 @@ struct ProjectDetailView: View {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+}
+
+private struct ProjectColorSwatch: View {
+    let preset: ProjectColorPreset
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 5)
+            .fill(PlannerTheme.projectGradient(preset, opacity: 0.9))
+            .frame(width: 28, height: 18)
+            .overlay(
+                RoundedRectangle(cornerRadius: 5)
+                    .stroke(PlannerTheme.projectAccent(preset).opacity(0.75), lineWidth: 1)
+            )
     }
 }
 #endif

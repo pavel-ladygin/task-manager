@@ -101,6 +101,7 @@ private extension AppTheme {
 
 struct MacMainView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.scenePhase) private var scenePhase
     @Query(sort: \PlannerTask.createdAt, order: .forward) private var tasks: [PlannerTask]
     @Query(sort: \Project.createdAt, order: .forward) private var projects: [Project]
     @Query(sort: \AppSettings.createdAt, order: .forward) private var appSettings: [AppSettings]
@@ -112,12 +113,15 @@ struct MacMainView: View {
     @State private var searchText = ""
     @State private var newTaskTitle = ""
     @State private var newProjectTitle = ""
+    @State private var selectedCalendarDate = Date.now
     @State private var isInspectorVisible = true
     @State private var errorMessage: String?
     @State private var statusMessage: String?
     @State private var notificationStatus = "Неизвестно"
     @State private var syncToken = ""
     @State private var syncStatus = "Не синхронизировано"
+    @State private var autoSyncTask: Swift.Task<Void, Never>?
+    @State private var isAutoSyncing = false
 
     private var selectedTask: PlannerTask? {
         tasks.first { $0.id == selectedTaskID }
@@ -169,6 +173,23 @@ struct MacMainView: View {
                 ensureAppSettings()
                 refreshNotificationStatus()
                 syncToken = KeychainService.loadSyncToken()
+                triggerAutoSyncNow(reason: "Запуск")
+            }
+            .onChange(of: scenePhase) { _, newPhase in
+                switch newPhase {
+                case .active:
+                    triggerAutoSyncNow(reason: "Вход")
+                case .inactive, .background:
+                    triggerAutoSyncNow(reason: "Выход")
+                @unknown default:
+                    break
+                }
+            }
+            .onChange(of: taskSyncSignature) { _, _ in
+                scheduleAutoSync(reason: "Изменения задач")
+            }
+            .onChange(of: projectSyncSignature) { _, _ in
+                scheduleAutoSync(reason: "Изменения проектов")
             }
     }
 
@@ -202,6 +223,7 @@ struct MacMainView: View {
             kanbanColumns: kanbanColumns,
             calendarWeek: calendarWeek,
             calendarPlacements: calendarPlacements,
+            isCurrentCalendarWeek: isCurrentCalendarWeek,
             projects: activeProjects,
             allProjectTasks: selectedProjectTasks,
             selectedProject: selectedProject,
@@ -217,6 +239,10 @@ struct MacMainView: View {
             moveTask: moveTask,
             rescheduleTask: rescheduleTask,
             setTaskDue: setTaskDue,
+            openTaskInspector: openTaskInspector,
+            goToPreviousCalendarWeek: { moveSelectedCalendarWeek(by: -1) },
+            goToNextCalendarWeek: { moveSelectedCalendarWeek(by: 1) },
+            goToCurrentCalendarWeek: goToCurrentCalendarWeek,
             setHideEmptyKanbanColumns: setHideEmptyKanbanColumns,
             setTheme: setTheme,
             setDefaultReminderLeadMinutes: setDefaultReminderLeadMinutes,
@@ -231,6 +257,8 @@ struct MacMainView: View {
             testSyncConnection: testSyncConnection,
             bootstrapSync: bootstrapSync,
             syncNow: syncNow,
+            completedTaskCount: completedTaskCount,
+            clearCompletedTasks: clearCompletedTasks,
             exportBackup: exportBackup,
             importBackup: importBackup
         )
@@ -249,7 +277,7 @@ struct MacMainView: View {
     @ViewBuilder
     private var inspectorPanel: some View {
         if let selectedTask {
-            TaskDetailView(task: selectedTask, projects: projects)
+            TaskDetailView(task: selectedTask, projects: projects, deleteTask: deleteTask)
         } else if activeSection == .projects, let selectedProject {
             ProjectDetailView(project: selectedProject)
         } else {
@@ -297,7 +325,7 @@ struct MacMainView: View {
     }
 
     private var calendarWeek: CalendarWeek {
-        CalendarService.currentWeek()
+        CalendarService.week(containing: selectedCalendarDate)
     }
 
     private var calendarPlacements: [CalendarTaskPlacement] {
@@ -305,6 +333,13 @@ struct MacMainView: View {
             from: tasks,
             searchText: searchText,
             week: calendarWeek
+        )
+    }
+
+    private var isCurrentCalendarWeek: Bool {
+        Calendar.current.isDate(
+            calendarWeek.startOfWeek,
+            inSameDayAs: CalendarService.currentWeek().startOfWeek
         )
     }
 
@@ -346,6 +381,10 @@ struct MacMainView: View {
         )
     }
 
+    private var completedTaskCount: Int {
+        tasks.filter { $0.status == .done }.count
+    }
+
     private var commandActions: PlannerCommandActions {
         PlannerCommandActions(
             focusQuickAdd: focusQuickAdd,
@@ -354,6 +393,31 @@ struct MacMainView: View {
             markSelectedTaskDone: markSelectedTaskDone,
             canMarkSelectedTaskDone: selectedTask.map { $0.status != .done } ?? false
         )
+    }
+
+    private var taskSyncSignature: String {
+        tasks
+            .map { task in
+                [
+                    task.id.uuidString,
+                    String(task.updatedAt.timeIntervalSinceReferenceDate),
+                    task.project?.id.uuidString ?? "none",
+                    String(task.checklistItems.count)
+                ].joined(separator: ":")
+            }
+            .joined(separator: "|")
+    }
+
+    private var projectSyncSignature: String {
+        projects
+            .map { project in
+                [
+                    project.id.uuidString,
+                    String(project.updatedAt.timeIntervalSinceReferenceDate),
+                    project.status.rawValue
+                ].joined(separator: ":")
+            }
+            .joined(separator: "|")
     }
 
     private func createTask() {
@@ -367,6 +431,7 @@ struct MacMainView: View {
             selectedTaskID = task.id
             selectedSection = .inbox
             isInspectorVisible = true
+            scheduleAutoSync(reason: "Создана задача")
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -382,6 +447,7 @@ struct MacMainView: View {
             selectedProjectID = project.id
             selectedTaskID = nil
             isInspectorVisible = true
+            scheduleAutoSync(reason: "Создан проект")
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -392,6 +458,28 @@ struct MacMainView: View {
             try PlannerDataService.deleteTask(task, context: modelContext)
             if selectedTaskID == task.id {
                 selectedTaskID = nil
+            }
+            scheduleAutoSync(reason: "Удалена задача")
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func clearCompletedTasks() {
+        do {
+            let shouldClearSelectedTask = selectedTask?.status == .done
+            let deletedCount = try PlannerDataService.deleteCompletedTasks(from: tasks, context: modelContext)
+
+            if shouldClearSelectedTask {
+                selectedTaskID = nil
+            }
+
+            statusMessage = deletedCount == 0
+                ? "Выполненных задач для очистки нет."
+                : "Удалено выполненных задач: \(deletedCount)."
+
+            if deletedCount > 0 {
+                scheduleAutoSync(reason: "Очищены выполненные задачи")
             }
         } catch {
             errorMessage = error.localizedDescription
@@ -404,9 +492,15 @@ struct MacMainView: View {
             if selectedProjectID == project.id {
                 selectedProjectID = nil
             }
+            scheduleAutoSync(reason: "Удален проект")
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    private func openTaskInspector(_ taskID: UUID) {
+        selectedTaskID = taskID
+        isInspectorVisible = true
     }
 
     private func completeTask(_ task: PlannerTask) {
@@ -421,6 +515,7 @@ struct MacMainView: View {
                 context: modelContext
             )
             selectedTaskID = task.id
+            scheduleAutoSync(reason: "Задача выполнена")
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -442,6 +537,7 @@ struct MacMainView: View {
             )
             selectedTaskID = task.id
             isInspectorVisible = true
+            scheduleAutoSync(reason: "Задача перемещена")
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -456,6 +552,7 @@ struct MacMainView: View {
             )
             selectedTaskID = task.id
             isInspectorVisible = true
+            scheduleAutoSync(reason: "Задача перенесена")
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -470,9 +567,22 @@ struct MacMainView: View {
             )
             selectedTaskID = task.id
             isInspectorVisible = true
+            scheduleAutoSync(reason: "Изменен срок")
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    private func moveSelectedCalendarWeek(by value: Int) {
+        selectedCalendarDate = Calendar.current.date(
+            byAdding: .day,
+            value: value * 7,
+            to: selectedCalendarDate
+        ) ?? selectedCalendarDate
+    }
+
+    private func goToCurrentCalendarWeek() {
+        selectedCalendarDate = .now
     }
 
     private func setHideEmptyKanbanColumns(_ isHidden: Bool, settings: AppSettings) {
@@ -482,6 +592,7 @@ struct MacMainView: View {
                 settings: settings,
                 context: modelContext
             )
+            scheduleAutoSync(reason: "Изменены настройки")
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -494,6 +605,7 @@ struct MacMainView: View {
                 settings: settings,
                 context: modelContext
             )
+            scheduleAutoSync(reason: "Изменена тема")
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -506,6 +618,7 @@ struct MacMainView: View {
                 settings: settings,
                 context: modelContext
             )
+            scheduleAutoSync(reason: "Изменены уведомления")
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -514,6 +627,9 @@ struct MacMainView: View {
     private func setSyncEnabled(_ isEnabled: Bool, settings: AppSettings) {
         do {
             try PlannerDataService.setSyncEnabled(isEnabled, settings: settings, context: modelContext)
+            if isEnabled {
+                triggerAutoSyncNow(reason: "Синхронизация включена")
+            }
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -618,6 +734,7 @@ struct MacMainView: View {
             selectedTaskID = nil
             selectedProjectID = nil
             statusMessage = "JSON-резервная копия импортирована из \(url.lastPathComponent)."
+            scheduleAutoSync(reason: "Импортирована резервная копия")
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -656,6 +773,7 @@ struct MacMainView: View {
                 status: .done,
                 context: modelContext
             )
+            scheduleAutoSync(reason: "Задача выполнена")
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -685,6 +803,70 @@ struct MacMainView: View {
             try PlannerDataService.ensureAppSettings(context: modelContext)
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    private func scheduleAutoSync(reason: String) {
+        guard AutoSyncService.canSync(settings: currentSettings, token: syncToken) else {
+            return
+        }
+
+        autoSyncTask?.cancel()
+        autoSyncTask = Swift.Task {
+            do {
+                try await Swift.Task.sleep(nanoseconds: AutoSyncService.debounceDelayNanoseconds)
+            } catch {
+                return
+            }
+
+            guard !Swift.Task.isCancelled else {
+                return
+            }
+
+            await performAutoSync(reason: reason, showErrors: false)
+        }
+    }
+
+    private func triggerAutoSyncNow(reason: String) {
+        guard AutoSyncService.canSync(settings: currentSettings, token: syncToken) else {
+            return
+        }
+
+        autoSyncTask?.cancel()
+        autoSyncTask = nil
+        Swift.Task {
+            await performAutoSync(reason: reason, showErrors: false)
+        }
+    }
+
+    private func performAutoSync(reason: String, showErrors: Bool) async {
+        guard
+            let settings = currentSettings,
+            AutoSyncService.canSync(settings: settings, token: syncToken)
+        else {
+            return
+        }
+
+        guard !isAutoSyncing else {
+            scheduleAutoSync(reason: reason)
+            return
+        }
+
+        isAutoSyncing = true
+        defer { isAutoSyncing = false }
+
+        do {
+            let result = try await AutoSyncService.syncNow(
+                context: modelContext,
+                settings: settings,
+                token: syncToken
+            )
+            syncStatus = "Автосинк OK: отправлено \(result.pushed), получено \(result.pulled), cursor \(result.cursor)"
+        } catch {
+            syncStatus = "Автосинк ошибка: \(error.localizedDescription)"
+            if showErrors {
+                errorMessage = error.localizedDescription
+            }
         }
     }
 }
@@ -781,6 +963,7 @@ private struct MacContentView: View {
     let kanbanColumns: [KanbanColumn]
     let calendarWeek: CalendarWeek
     let calendarPlacements: [CalendarTaskPlacement]
+    let isCurrentCalendarWeek: Bool
     let projects: [Project]
     let allProjectTasks: [PlannerTask]
     let selectedProject: Project?
@@ -796,6 +979,10 @@ private struct MacContentView: View {
     let moveTask: (PlannerTask, TaskStatus, PlannerTask?, PlannerTask?) -> Void
     let rescheduleTask: (PlannerTask, Date) -> Void
     let setTaskDue: (PlannerTask, Date) -> Void
+    let openTaskInspector: (UUID) -> Void
+    let goToPreviousCalendarWeek: () -> Void
+    let goToNextCalendarWeek: () -> Void
+    let goToCurrentCalendarWeek: () -> Void
     let setHideEmptyKanbanColumns: (Bool, AppSettings) -> Void
     let setTheme: (AppTheme, AppSettings) -> Void
     let setDefaultReminderLeadMinutes: (Int, AppSettings) -> Void
@@ -810,6 +997,8 @@ private struct MacContentView: View {
     let testSyncConnection: (AppSettings) -> Void
     let bootstrapSync: (AppSettings) -> Void
     let syncNow: (AppSettings) -> Void
+    let completedTaskCount: Int
+    let clearCompletedTasks: () -> Void
     let exportBackup: () -> Void
     let importBackup: () -> Void
 
@@ -836,7 +1025,12 @@ private struct MacContentView: View {
                     week: calendarWeek,
                     placements: calendarPlacements,
                     searchText: searchText,
+                    isCurrentWeek: isCurrentCalendarWeek,
                     selectedTaskID: $selectedTaskID,
+                    openTaskInspector: openTaskInspector,
+                    goToPreviousWeek: goToPreviousCalendarWeek,
+                    goToNextWeek: goToNextCalendarWeek,
+                    goToCurrentWeek: goToCurrentCalendarWeek,
                     rescheduleTask: rescheduleTask,
                     setTaskDue: setTaskDue
                 )
@@ -859,6 +1053,8 @@ private struct MacContentView: View {
                     testSyncConnection: testSyncConnection,
                     bootstrapSync: bootstrapSync,
                     syncNow: syncNow,
+                    completedTaskCount: completedTaskCount,
+                    clearCompletedTasks: clearCompletedTasks,
                     exportBackup: exportBackup,
                     importBackup: importBackup
                 )
@@ -1057,8 +1253,14 @@ private struct ProjectListRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(project.title)
-                .font(.body)
+            HStack(spacing: 8) {
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(PlannerTheme.projectGradient(project.colorPreset, opacity: 0.9))
+                    .frame(width: 22, height: 14)
+
+                Text(project.title)
+                    .font(.body)
+            }
 
             Text(project.status.displayName)
                 .font(.caption)
@@ -1116,10 +1318,16 @@ private struct ProjectPageView: View {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(project.title)
-                            .font(.title2)
-                            .fontWeight(.semibold)
-                            .lineLimit(2)
+                        HStack(spacing: 10) {
+                            RoundedRectangle(cornerRadius: 5)
+                                .fill(PlannerTheme.projectGradient(project.colorPreset, opacity: 0.9))
+                                .frame(width: 28, height: 18)
+
+                            Text(project.title)
+                                .font(.title2)
+                                .fontWeight(.semibold)
+                                .lineLimit(2)
+                        }
 
                         Text(project.notes.isEmpty ? "Нет заметок" : project.notes)
                             .foregroundStyle(PlannerTheme.secondaryText)
@@ -1138,7 +1346,7 @@ private struct ProjectPageView: View {
                     .tint(PlannerTheme.accent)
             }
             .padding()
-            .background(PlannerTheme.panelBackground)
+            .background(PlannerTheme.projectGradient(project.colorPreset, opacity: 0.16))
 
             Divider()
 
@@ -1239,7 +1447,7 @@ private struct TaskListRow: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 7)
         .background(
-            isSelected ? PlannerTheme.accentSoft.opacity(0.78) : Color.clear,
+            rowBackground,
             in: RoundedRectangle(cornerRadius: 8)
         )
         .overlay(
@@ -1248,6 +1456,18 @@ private struct TaskListRow: View {
         )
         .contentShape(RoundedRectangle(cornerRadius: 8))
         .listRowBackground(isSelected ? PlannerTheme.accentSoft.opacity(0.28) : PlannerTheme.rowBackground)
+    }
+
+    private var rowBackground: AnyShapeStyle {
+        if isSelected {
+            return AnyShapeStyle(PlannerTheme.accentSoft.opacity(0.78))
+        }
+
+        if let preset = task.project?.colorPreset {
+            return AnyShapeStyle(PlannerTheme.projectGradient(preset, opacity: 0.18))
+        }
+
+        return AnyShapeStyle(Color.clear)
     }
 }
 
@@ -1434,10 +1654,10 @@ private struct KanbanCardView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(10)
-            .background(PlannerTheme.elevatedBackground, in: RoundedRectangle(cornerRadius: 8))
+            .background(cardBackground, in: RoundedRectangle(cornerRadius: 8))
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
-                    .stroke(PlannerTheme.border, lineWidth: 0.5)
+                    .stroke(task.project.map { PlannerTheme.projectAccent($0.colorPreset).opacity(0.42) } ?? PlannerTheme.border, lineWidth: 0.5)
             )
         }
         .buttonStyle(.plain)
@@ -1445,13 +1665,26 @@ private struct KanbanCardView: View {
             NSItemProvider(object: task.id.uuidString as NSString)
         }
     }
+
+    private var cardBackground: AnyShapeStyle {
+        if let preset = task.project?.colorPreset {
+            return AnyShapeStyle(PlannerTheme.projectGradient(preset, opacity: 0.20))
+        }
+
+        return AnyShapeStyle(PlannerTheme.elevatedBackground)
+    }
 }
 
 private struct CalendarWeekView: View {
     let week: CalendarWeek
     let placements: [CalendarTaskPlacement]
     let searchText: String
+    let isCurrentWeek: Bool
     @Binding var selectedTaskID: UUID?
+    let openTaskInspector: (UUID) -> Void
+    let goToPreviousWeek: () -> Void
+    let goToNextWeek: () -> Void
+    let goToCurrentWeek: () -> Void
     let rescheduleTask: (PlannerTask, Date) -> Void
     let setTaskDue: (PlannerTask, Date) -> Void
 
@@ -1468,7 +1701,19 @@ private struct CalendarWeekView: View {
     }
 
     var body: some View {
-        ZStack {
+        VStack(alignment: .leading, spacing: 0) {
+            CalendarWeekControlsView(
+                week: week,
+                placementCount: placements.count,
+                isSearching: isSearching,
+                isCurrentWeek: isCurrentWeek,
+                goToPreviousWeek: goToPreviousWeek,
+                goToNextWeek: goToNextWeek,
+                goToCurrentWeek: goToCurrentWeek
+            )
+            .padding([.horizontal, .top])
+            .padding(.bottom, 10)
+
             ScrollView([.horizontal, .vertical]) {
                 VStack(alignment: .leading, spacing: 0) {
                     CalendarWeekHeader(
@@ -1482,7 +1727,7 @@ private struct CalendarWeekView: View {
                         placements: placements,
                         timeColumnWidth: timeColumnWidth,
                         dayColumnWidth: dayColumnWidth,
-                        selectTask: { selectedTaskID = $0 },
+                        selectTask: openTaskInspector,
                         rescheduleTask: rescheduleTask
                     )
 
@@ -1500,7 +1745,7 @@ private struct CalendarWeekView: View {
                                 dayColumnWidth: dayColumnWidth,
                                 slotHeight: slotHeight,
                                 timelineHeight: timelineHeight,
-                                selectTask: { selectedTaskID = $0 },
+                                selectTask: openTaskInspector,
                                 rescheduleTask: rescheduleTask,
                                 setTaskDue: setTaskDue
                             )
@@ -1514,21 +1759,79 @@ private struct CalendarWeekView: View {
                 )
             }
             .background(PlannerTheme.windowBackground)
-
-            if placements.isEmpty {
-                ContentUnavailableView(
-                    isSearching ? "Ничего не найдено" : "Нет задач в календаре",
-                    systemImage: MacSidebarSection.calendar.systemImage,
-                    description: Text(isSearching ? "Попробуйте изменить запрос." : "Здесь появятся запланированные задачи и сроки на текущую неделю.")
-                )
-                .allowsHitTesting(false)
-            }
         }
         .background(PlannerTheme.windowBackground)
     }
 
     private func timedPlacements(for day: CalendarDay) -> [CalendarTaskPlacement] {
         placements.filter { $0.day.id == day.id && !$0.isAllDay }
+    }
+}
+
+private struct CalendarWeekControlsView: View {
+    let week: CalendarWeek
+    let placementCount: Int
+    let isSearching: Bool
+    let isCurrentWeek: Bool
+    let goToPreviousWeek: () -> Void
+    let goToNextWeek: () -> Void
+    let goToCurrentWeek: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Button(action: goToPreviousWeek) {
+                Image(systemName: "chevron.left")
+            }
+            .buttonStyle(.bordered)
+            .help("Предыдущая неделя")
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(isCurrentWeek ? "Текущая неделя" : "Выбранная неделя")
+                    .font(.headline)
+                    .foregroundStyle(.primary)
+
+                HStack(spacing: 8) {
+                    Text(weekRangeText)
+                    Text(statusText)
+                }
+                .font(.caption)
+                .foregroundStyle(PlannerTheme.secondaryText)
+            }
+
+            Spacer(minLength: 16)
+
+            Button("Сегодня", action: goToCurrentWeek)
+                .buttonStyle(.bordered)
+                .disabled(isCurrentWeek)
+
+            Button(action: goToNextWeek) {
+                Image(systemName: "chevron.right")
+            }
+            .buttonStyle(.bordered)
+            .help("Следующая неделя")
+        }
+        .padding(12)
+        .background(PlannerTheme.panelBackground, in: RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(PlannerTheme.subtleBorder, lineWidth: 0.5)
+        )
+    }
+
+    private var statusText: String {
+        if placementCount == 0 {
+            return isSearching ? "Нет совпадений" : "Нет задач"
+        }
+
+        return "\(placementCount) событий"
+    }
+
+    private var weekRangeText: String {
+        guard let first = week.days.first?.date, let last = week.days.last?.date else {
+            return ""
+        }
+
+        return "\(first.formatted(date: .abbreviated, time: .omitted)) - \(last.formatted(date: .abbreviated, time: .omitted))"
     }
 }
 
@@ -1966,12 +2269,28 @@ private struct CalendarTaskBlock: View {
         }
     }
 
-    private var blockBackground: Color {
-        placement.kind == .due ? PlannerTheme.danger.opacity(0.16) : PlannerTheme.accentSoft.opacity(0.86)
+    private var blockBackground: AnyShapeStyle {
+        if placement.kind == .due {
+            return AnyShapeStyle(PlannerTheme.danger.opacity(0.16))
+        }
+
+        if let preset = placement.task.project?.colorPreset {
+            return AnyShapeStyle(PlannerTheme.projectGradient(preset, opacity: 0.28))
+        }
+
+        return AnyShapeStyle(PlannerTheme.accentSoft.opacity(0.86))
     }
 
     private var borderColor: Color {
-        placement.kind == .due ? PlannerTheme.danger.opacity(0.38) : PlannerTheme.accent.opacity(0.42)
+        if placement.kind == .due {
+            return PlannerTheme.danger.opacity(0.38)
+        }
+
+        if let preset = placement.task.project?.colorPreset {
+            return PlannerTheme.projectAccent(preset).opacity(0.48)
+        }
+
+        return PlannerTheme.accent.opacity(0.42)
     }
 }
 
@@ -2049,8 +2368,12 @@ private struct SettingsPlaceholderView: View {
     let testSyncConnection: (AppSettings) -> Void
     let bootstrapSync: (AppSettings) -> Void
     let syncNow: (AppSettings) -> Void
+    let completedTaskCount: Int
+    let clearCompletedTasks: () -> Void
     let exportBackup: () -> Void
     let importBackup: () -> Void
+
+    @State private var isClearCompletedConfirmationPresented = false
 
     var body: some View {
         Form {
@@ -2171,11 +2494,34 @@ private struct SettingsPlaceholderView: View {
                     }
                 }
             }
+
+            Section("Очистка") {
+                LabeledContent("Выполненные задачи", value: "\(completedTaskCount)")
+
+                Button(role: .destructive) {
+                    isClearCompletedConfirmationPresented = true
+                } label: {
+                    Label("Очистить выполненные задачи", systemImage: "trash")
+                }
+                .disabled(completedTaskCount == 0)
+            }
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
         .background(PlannerTheme.windowBackground)
         .tint(PlannerTheme.accent)
+        .confirmationDialog(
+            "Очистить выполненные задачи?",
+            isPresented: $isClearCompletedConfirmationPresented
+        ) {
+            Button("Удалить \(completedTaskCount)", role: .destructive) {
+                clearCompletedTasks()
+            }
+
+            Button("Отмена", role: .cancel) {}
+        } message: {
+            Text("Будут удалены задачи со статусом «Выполнено». Удаление попадет в синхронизацию.")
+        }
     }
 }
 #endif

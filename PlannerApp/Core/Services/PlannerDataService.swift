@@ -169,12 +169,38 @@ enum PlannerDataService {
     }
 
     static func deleteTask(_ task: PlannerTask, context: ModelContext) throws {
+        try deleteTask(task, context: context, saveImmediately: true)
+    }
+
+    @discardableResult
+    static func deleteCompletedTasks(from tasks: [PlannerTask], context: ModelContext) throws -> Int {
+        let completedTasks = tasks.filter { $0.status == .done }
+
+        for task in completedTasks {
+            try deleteTask(task, context: context, saveImmediately: false)
+        }
+
+        if !completedTasks.isEmpty {
+            try context.save()
+        }
+
+        return completedTasks.count
+    }
+
+    private static func deleteTask(
+        _ task: PlannerTask,
+        context: ModelContext,
+        saveImmediately: Bool
+    ) throws {
         recordTombstone(entityType: .task, entityID: task.id, context: context)
         NotificationService.cancelNotifications(for: task)
         task.checklistItems.forEach { context.delete($0) }
         task.checklistItems.removeAll()
         context.delete(task)
-        try context.save()
+
+        if saveImmediately {
+            try context.save()
+        }
     }
 
     @discardableResult
@@ -213,6 +239,16 @@ enum PlannerDataService {
     }
 
     static func markProjectUpdated(_ project: Project, context: ModelContext) throws {
+        project.updatedAt = .now
+        try context.save()
+    }
+
+    static func setProjectColor(
+        _ color: ProjectColorPreset,
+        project: Project,
+        context: ModelContext
+    ) throws {
+        project.colorPreset = color
         project.updatedAt = .now
         try context.save()
     }

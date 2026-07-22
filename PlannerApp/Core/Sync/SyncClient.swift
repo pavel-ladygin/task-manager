@@ -50,7 +50,15 @@ final class SyncClient {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         }
 
-        let (data, response) = try await session.data(for: request)
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch let error as URLError {
+            throw SyncError.network(error.localizedDescription)
+        } catch {
+            throw SyncError.network(error.localizedDescription)
+        }
         guard let httpResponse = response as? HTTPURLResponse else {
             throw SyncError.invalidResponse
         }
@@ -118,6 +126,7 @@ enum SyncError: LocalizedError {
     case missingToken
     case missingCertificateFingerprint
     case invalidResponse
+    case network(String)
     case server(String)
 
     var errorDescription: String? {
@@ -132,6 +141,8 @@ enum SyncError: LocalizedError {
             "Укажите SHA256 fingerprint сертификата сервера."
         case .invalidResponse:
             "Сервер синхронизации вернул некорректный ответ."
+        case .network(let message):
+            "Ошибка подключения к серверу синхронизации: \(message)"
         case .server(let message):
             "Ошибка сервера синхронизации: \(message)"
         }

@@ -273,6 +273,7 @@ enum SyncService {
             }
             project.title = dto.title
             project.statusRawValue = dto.status
+            project.colorRawValue = dto.color ?? ProjectColorPreset.ocean.rawValue
             project.deadline = dto.deadline
             project.notes = dto.notes
             project.createdAt = dto.createdAt
@@ -282,6 +283,7 @@ enum SyncService {
                 id: dto.id,
                 title: dto.title,
                 status: ProjectStatus(rawValue: dto.status) ?? .active,
+                color: ProjectColorPreset(rawValue: dto.color ?? ProjectColorPreset.ocean.rawValue) ?? .ocean,
                 deadline: dto.deadline,
                 notes: dto.notes,
                 createdAt: dto.createdAt,
@@ -413,6 +415,7 @@ enum SyncService {
             id: project.id,
             title: project.title,
             status: project.status.rawValue,
+            color: project.colorPreset.rawValue,
             deadline: project.deadline,
             notes: project.notes,
             createdAt: project.createdAt,

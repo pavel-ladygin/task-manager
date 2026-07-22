@@ -6,6 +6,7 @@ final class Project {
     var id: UUID = UUID()
     var title: String = ""
     var statusRawValue: String = ProjectStatus.active.rawValue
+    var colorRawValue: String = "ocean"
     var deadline: Date?
     var notes: String = ""
     var createdAt: Date = Date.now
@@ -15,6 +16,7 @@ final class Project {
         id: UUID = UUID(),
         title: String,
         status: ProjectStatus = .active,
+        color: ProjectColorPreset = .ocean,
         deadline: Date? = nil,
         notes: String = "",
         createdAt: Date = Date.now,
@@ -23,6 +25,7 @@ final class Project {
         self.id = id
         self.title = title
         self.statusRawValue = status.rawValue
+        self.colorRawValue = color.rawValue
         self.deadline = deadline
         self.notes = notes
         self.createdAt = createdAt
@@ -32,5 +35,10 @@ final class Project {
     var status: ProjectStatus {
         get { ProjectStatus(rawValue: statusRawValue) ?? .active }
         set { statusRawValue = newValue.rawValue }
+    }
+
+    var colorPreset: ProjectColorPreset {
+        get { ProjectColorPreset(rawValue: colorRawValue) ?? .ocean }
+        set { colorRawValue = newValue.rawValue }
     }
 }

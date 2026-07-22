@@ -32,6 +32,7 @@ struct ProjectBackupDTO: Codable {
     let id: UUID
     let title: String
     let status: String
+    let color: String?
     let deadline: Date?
     let notes: String
     let createdAt: Date
@@ -126,6 +127,7 @@ enum BackupService {
                 id: dto.id,
                 title: normalizedTitle(dto.title),
                 status: ProjectStatus(rawValue: dto.status) ?? .active,
+                color: ProjectColorPreset(rawValue: dto.color ?? ProjectColorPreset.ocean.rawValue) ?? .ocean,
                 deadline: dto.deadline,
                 notes: dto.notes,
                 createdAt: dto.createdAt,
@@ -232,6 +234,11 @@ enum BackupService {
             guard ProjectStatus(rawValue: project.status) != nil else {
                 throw BackupError.validationFailed("Неизвестный статус проекта: \(project.status).")
             }
+
+            if let color = project.color,
+               ProjectColorPreset(rawValue: color) == nil {
+                throw BackupError.validationFailed("Неизвестный цвет проекта: \(color).")
+            }
         }
 
         for tag in backup.tags {
@@ -329,6 +336,7 @@ enum BackupService {
             id: project.id,
             title: project.title,
             status: project.status.rawValue,
+            color: project.colorPreset.rawValue,
             deadline: project.deadline,
             notes: project.notes,
             createdAt: project.createdAt,
