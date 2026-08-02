@@ -8,6 +8,7 @@ services:
     network_mode: host
     environment:
       PLANNER_SYNC_TOKEN: ${PLANNER_SYNC_TOKEN:?set PLANNER_SYNC_TOKEN in .env}
+      PLANNER_WIDGET_TOKEN: ${PLANNER_WIDGET_TOKEN:?set PLANNER_WIDGET_TOKEN in .env}
       PLANNER_DB_PATH: ${PLANNER_DB_PATH:-/data/planner.db}
       PLANNER_ADDR: ${PLANNER_ADDR:-:443}
       PLANNER_TLS_CERT: ${PLANNER_TLS_CERT:-/certs/planner.crt}

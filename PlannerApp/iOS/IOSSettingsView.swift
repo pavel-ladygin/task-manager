@@ -1,9 +1,12 @@
 import Foundation
+import SwiftData
 import SwiftUI
 import UniformTypeIdentifiers
 
 #if os(iOS)
 struct IOSSettingsView: View {
+    @Environment(\.modelContext) private var modelContext
+    @Query(sort: \SyncConflict.createdAt, order: .reverse) private var syncConflicts: [SyncConflict]
     let settings: AppSettings?
     let setTheme: (AppTheme, AppSettings) -> Void
     let setHideEmptyKanbanColumns: (Bool, AppSettings) -> Void
@@ -29,6 +32,9 @@ struct IOSSettingsView: View {
     @State private var isClearCompletedConfirmationPresented = false
     @State private var statusMessage: String?
     @State private var errorMessage: String?
+    @State private var serverURLDraft = ""
+    @State private var fingerprintDraft = ""
+    @State private var tokenDraft = ""
 
     var body: some View {
         Form {
@@ -116,30 +122,21 @@ struct IOSSettingsView: View {
 
                     TextField(
                         "Server URL",
-                        text: Binding(
-                            get: { settings.syncServerURL },
-                            set: { setSyncServerURL($0, settings) }
-                        )
+                        text: $serverURLDraft
                     )
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
 
                     SecureField(
                         "API token",
-                        text: Binding(
-                            get: { syncToken },
-                            set: { setSyncToken($0) }
-                        )
+                        text: $tokenDraft
                     )
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
 
                     TextField(
                         "SHA256 fingerprint",
-                        text: Binding(
-                            get: { settings.syncCertificateFingerprint },
-                            set: { setSyncCertificateFingerprint($0, settings) }
-                        )
+                        text: $fingerprintDraft
                     )
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
@@ -149,11 +146,23 @@ struct IOSSettingsView: View {
                     LabeledContent("Последняя синхронизация", value: settings.syncLastSyncAt?.formatted(date: .abbreviated, time: .shortened) ?? "Нет")
                     LabeledContent("Статус", value: syncStatus)
 
+                    HStack {
+                        Button("Отмена") { loadConnectionDrafts(settings) }
+                            .disabled(!connectionIsDirty(settings))
+                        Button("Применить подключение") {
+                            setSyncServerURL(serverURLDraft, settings)
+                            setSyncCertificateFingerprint(fingerprintDraft, settings)
+                            setSyncToken(tokenDraft)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(!connectionIsDirty(settings))
+                    }
+
                     Button("Test connection") {
                         testSyncConnection(settings)
                     }
 
-                    Button("Bootstrap server") {
+                    Button("Инициализировать пустой сервер") {
                         bootstrapSync(settings)
                     }
 
@@ -162,6 +171,23 @@ struct IOSSettingsView: View {
                     }
                 } else {
                     LabeledContent("Синхронизация", value: "Загрузка")
+                }
+            }
+
+            if !unresolvedConflicts.isEmpty {
+                Section("Конфликты синхронизации") {
+                    ForEach(unresolvedConflicts) { conflict in
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("\(conflict.entityType): \(conflict.entityID)").font(.caption).lineLimit(1)
+                            HStack {
+                                Button("Сервер") { resolve(conflict, .keepServer) }
+                                Button("Локально") { resolve(conflict, .keepLocal) }
+                                if conflict.entityType == SyncEntityType.task.rawValue || conflict.entityType == SyncEntityType.project.rawValue {
+                                    Button("Копия") { resolve(conflict, .duplicateLocal) }
+                                }
+                            }.buttonStyle(.bordered)
+                        }
+                    }
                 }
             }
         }
@@ -218,7 +244,9 @@ struct IOSSettingsView: View {
         }
         .task {
             notificationStatus = await NotificationService.authorizationStatusDescription()
+            if let settings { loadConnectionDrafts(settings) }
         }
+        .onChange(of: settings?.id) { _, _ in if let settings { loadConnectionDrafts(settings) } }
     }
 
     private var statusBinding: Binding<Bool> {
@@ -226,6 +254,25 @@ struct IOSSettingsView: View {
             get: { statusMessage != nil },
             set: { if !$0 { statusMessage = nil } }
         )
+    }
+
+    private var unresolvedConflicts: [SyncConflict] { syncConflicts.filter { $0.resolvedAt == nil } }
+
+    private func resolve(_ conflict: SyncConflict, _ resolution: SyncConflictResolution) {
+        do { try SyncService.resolve(conflict, resolution: resolution, context: modelContext) }
+        catch { errorMessage = error.localizedDescription }
+    }
+
+    private func loadConnectionDrafts(_ settings: AppSettings) {
+        serverURLDraft = settings.syncServerURL
+        fingerprintDraft = settings.syncCertificateFingerprint
+        tokenDraft = syncToken
+    }
+
+    private func connectionIsDirty(_ settings: AppSettings) -> Bool {
+        serverURLDraft != settings.syncServerURL
+            || fingerprintDraft != settings.syncCertificateFingerprint
+            || tokenDraft != syncToken
     }
 
     private var errorBinding: Binding<Bool> {

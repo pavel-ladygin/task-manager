@@ -36,13 +36,13 @@
 		10000000000000000000011C /* IOSKanbanView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000001C /* IOSKanbanView.swift */; };
 		10000000000000000000011D /* IOSCalendarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000001D /* IOSCalendarView.swift */; };
 		10000000000000000000011E /* TaskRecurrence.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000001E /* TaskRecurrence.swift */; };
-		10000000000000000000012A /* ProjectColorPreset.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000002A /* ProjectColorPreset.swift */; };
 		100000000000000000000124 /* SyncTombstone.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000024 /* SyncTombstone.swift */; };
 		100000000000000000000125 /* SyncDTO.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000025 /* SyncDTO.swift */; };
 		100000000000000000000126 /* SyncClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000026 /* SyncClient.swift */; };
 		100000000000000000000127 /* SyncService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000027 /* SyncService.swift */; };
 		100000000000000000000128 /* KeychainService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000028 /* KeychainService.swift */; };
 		100000000000000000000129 /* AutoSyncService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000029 /* AutoSyncService.swift */; };
+		10000000000000000000012A /* ProjectColorPreset.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000002A /* ProjectColorPreset.swift */; };
 		200000000000000000000101 /* TaskStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000001 /* TaskStatus.swift */; };
 		200000000000000000000102 /* Priority.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000002 /* Priority.swift */; };
 		200000000000000000000103 /* ProjectStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000003 /* ProjectStatus.swift */; };
@@ -72,14 +72,52 @@
 		20000000000000000000011C /* IOSKanbanView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000001C /* IOSKanbanView.swift */; };
 		20000000000000000000011D /* IOSCalendarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000001D /* IOSCalendarView.swift */; };
 		20000000000000000000011E /* TaskRecurrence.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000001E /* TaskRecurrence.swift */; };
-		20000000000000000000012A /* ProjectColorPreset.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000002A /* ProjectColorPreset.swift */; };
 		200000000000000000000124 /* SyncTombstone.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000024 /* SyncTombstone.swift */; };
 		200000000000000000000125 /* SyncDTO.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000025 /* SyncDTO.swift */; };
 		200000000000000000000126 /* SyncClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000026 /* SyncClient.swift */; };
 		200000000000000000000127 /* SyncService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000027 /* SyncService.swift */; };
 		200000000000000000000128 /* KeychainService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000028 /* KeychainService.swift */; };
 		200000000000000000000129 /* AutoSyncService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000029 /* AutoSyncService.swift */; };
+		20000000000000000000012A /* ProjectColorPreset.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000002A /* ProjectColorPreset.swift */; };
+		300000000000000000000101 /* PlannerCoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 300000000000000000000001 /* PlannerCoreTests.swift */; };
+		400000000000000000000101 /* TodayWidgetSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 400000000000000000000001 /* TodayWidgetSnapshot.swift */; };
+		400000000000000000000103 /* PlannerTodayWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 400000000000000000000003 /* PlannerTodayWidget.swift */; };
+		400000000000000000000104 /* TodayWidgetSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 400000000000000000000001 /* TodayWidgetSnapshot.swift */; };
+		400000000000000000000105 /* PlannerTodayWidgetExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 400000000000000000000020 /* PlannerTodayWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		400000000000000000000106 /* TodayWidgetSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 400000000000000000000001 /* TodayWidgetSnapshot.swift */; };
+		400000000000000000000107 /* PlannerWidgetClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 400000000000000000000006 /* PlannerWidgetClient.swift */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		3000000000000000000000C0 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 100000000000000000000062 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 100000000000000000000060;
+			remoteInfo = "PlannerApp-macOS";
+		};
+		4000000000000000000000C0 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 100000000000000000000062 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 400000000000000000000060;
+			remoteInfo = PlannerTodayWidgetExtension;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		400000000000000000000082 /* Embed App Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				400000000000000000000105 /* PlannerTodayWidgetExtension.appex in Embed App Extensions */,
+			);
+			name = "Embed App Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		100000000000000000000001 /* TaskStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskStatus.swift; sourceTree = "<group>"; };
@@ -111,7 +149,6 @@
 		10000000000000000000001C /* IOSKanbanView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IOSKanbanView.swift; sourceTree = "<group>"; };
 		10000000000000000000001D /* IOSCalendarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IOSCalendarView.swift; sourceTree = "<group>"; };
 		10000000000000000000001E /* TaskRecurrence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskRecurrence.swift; sourceTree = "<group>"; };
-		10000000000000000000002A /* ProjectColorPreset.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectColorPreset.swift; sourceTree = "<group>"; };
 		100000000000000000000020 /* PlannerApp-macOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "PlannerApp-macOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		100000000000000000000021 /* PlannerApp-iOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "PlannerApp-iOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		100000000000000000000024 /* SyncTombstone.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncTombstone.swift; sourceTree = "<group>"; };
@@ -120,8 +157,16 @@
 		100000000000000000000027 /* SyncService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncService.swift; sourceTree = "<group>"; };
 		100000000000000000000028 /* KeychainService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainService.swift; sourceTree = "<group>"; };
 		100000000000000000000029 /* AutoSyncService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoSyncService.swift; sourceTree = "<group>"; };
+		10000000000000000000002A /* ProjectColorPreset.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectColorPreset.swift; sourceTree = "<group>"; };
 		1000000000000000000000E0 /* PlannerApp-macOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "PlannerApp-macOS.entitlements"; sourceTree = "<group>"; };
 		1000000000000000000000E1 /* PlannerApp-iOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "PlannerApp-iOS.entitlements"; sourceTree = "<group>"; };
+		300000000000000000000001 /* PlannerCoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerCoreTests.swift; sourceTree = "<group>"; };
+		300000000000000000000020 /* PlannerAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PlannerAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		400000000000000000000001 /* TodayWidgetSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayWidgetSnapshot.swift; sourceTree = "<group>"; };
+		400000000000000000000003 /* PlannerTodayWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerTodayWidget.swift; sourceTree = "<group>"; };
+		400000000000000000000004 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		400000000000000000000006 /* PlannerWidgetClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerWidgetClient.swift; sourceTree = "<group>"; };
+		400000000000000000000020 /* PlannerTodayWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = PlannerTodayWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -139,6 +184,20 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		300000000000000000000030 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		400000000000000000000030 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -146,6 +205,8 @@
 			isa = PBXGroup;
 			children = (
 				100000000000000000000041 /* PlannerApp */,
+				400000000000000000000041 /* PlannerWidgets */,
+				300000000000000000000040 /* PlannerAppTests */,
 				100000000000000000000050 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -169,6 +230,7 @@
 				100000000000000000000044 /* Services */,
 				100000000000000000000045 /* Utils */,
 				100000000000000000000049 /* Sync */,
+				400000000000000000000040 /* Widget */,
 			);
 			path = Core;
 			sourceTree = "<group>";
@@ -264,8 +326,36 @@
 			children = (
 				100000000000000000000020 /* PlannerApp-macOS.app */,
 				100000000000000000000021 /* PlannerApp-iOS.app */,
+				400000000000000000000020 /* PlannerTodayWidgetExtension.appex */,
+				300000000000000000000020 /* PlannerAppTests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		300000000000000000000040 /* PlannerAppTests */ = {
+			isa = PBXGroup;
+			children = (
+				300000000000000000000001 /* PlannerCoreTests.swift */,
+			);
+			path = PlannerAppTests;
+			sourceTree = "<group>";
+		};
+		400000000000000000000040 /* Widget */ = {
+			isa = PBXGroup;
+			children = (
+				400000000000000000000001 /* TodayWidgetSnapshot.swift */,
+			);
+			path = Widget;
+			sourceTree = "<group>";
+		};
+		400000000000000000000041 /* PlannerWidgets */ = {
+			isa = PBXGroup;
+			children = (
+				400000000000000000000003 /* PlannerTodayWidget.swift */,
+				400000000000000000000006 /* PlannerWidgetClient.swift */,
+				400000000000000000000004 /* Info.plist */,
+			);
+			path = PlannerWidgets;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -295,15 +385,52 @@
 				100000000000000000000071 /* Sources */,
 				100000000000000000000031 /* Frameworks */,
 				100000000000000000000081 /* Resources */,
+				400000000000000000000082 /* Embed App Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				4000000000000000000000D0 /* PBXTargetDependency */,
 			);
 			name = "PlannerApp-iOS";
 			productName = "PlannerApp-iOS";
 			productReference = 100000000000000000000021 /* PlannerApp-iOS.app */;
 			productType = "com.apple.product-type.application";
+		};
+		300000000000000000000060 /* PlannerAppTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 300000000000000000000090 /* Build configuration list for PBXNativeTarget "PlannerAppTests" */;
+			buildPhases = (
+				300000000000000000000070 /* Sources */,
+				300000000000000000000030 /* Frameworks */,
+				300000000000000000000080 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				3000000000000000000000D0 /* PBXTargetDependency */,
+			);
+			name = PlannerAppTests;
+			productName = PlannerAppTests;
+			productReference = 300000000000000000000020 /* PlannerAppTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		400000000000000000000060 /* PlannerTodayWidgetExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 400000000000000000000090 /* Build configuration list for PBXNativeTarget "PlannerTodayWidgetExtension" */;
+			buildPhases = (
+				400000000000000000000070 /* Sources */,
+				400000000000000000000030 /* Frameworks */,
+				400000000000000000000080 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = PlannerTodayWidgetExtension;
+			productName = PlannerTodayWidgetExtension;
+			productReference = 400000000000000000000020 /* PlannerTodayWidgetExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -319,6 +446,13 @@
 						CreatedOnToolsVersion = 15.0;
 					};
 					100000000000000000000061 = {
+						CreatedOnToolsVersion = 15.0;
+					};
+					300000000000000000000060 = {
+						CreatedOnToolsVersion = 15.0;
+						TestTargetID = 100000000000000000000060;
+					};
+					400000000000000000000060 = {
 						CreatedOnToolsVersion = 15.0;
 					};
 				};
@@ -338,6 +472,8 @@
 			targets = (
 				100000000000000000000060 /* PlannerApp-macOS */,
 				100000000000000000000061 /* PlannerApp-iOS */,
+				400000000000000000000060 /* PlannerTodayWidgetExtension */,
+				300000000000000000000060 /* PlannerAppTests */,
 			);
 		};
 /* End PBXProject section */
@@ -357,6 +493,20 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		300000000000000000000080 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		400000000000000000000080 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -364,6 +514,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				400000000000000000000106 /* TodayWidgetSnapshot.swift in Sources */,
 				100000000000000000000101 /* TaskStatus.swift in Sources */,
 				100000000000000000000102 /* Priority.swift in Sources */,
 				10000000000000000000011E /* TaskRecurrence.swift in Sources */,
@@ -407,6 +558,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				400000000000000000000101 /* TodayWidgetSnapshot.swift in Sources */,
 				200000000000000000000101 /* TaskStatus.swift in Sources */,
 				200000000000000000000102 /* Priority.swift in Sources */,
 				20000000000000000000011E /* TaskRecurrence.swift in Sources */,
@@ -446,7 +598,38 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		300000000000000000000070 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				300000000000000000000101 /* PlannerCoreTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		400000000000000000000070 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				400000000000000000000103 /* PlannerTodayWidget.swift in Sources */,
+				400000000000000000000104 /* TodayWidgetSnapshot.swift in Sources */,
+				400000000000000000000107 /* PlannerWidgetClient.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		3000000000000000000000D0 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 100000000000000000000060 /* PlannerApp-macOS */;
+			targetProxy = 3000000000000000000000C0 /* PBXContainerItemProxy */;
+		};
+		4000000000000000000000D0 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 400000000000000000000060 /* PlannerTodayWidgetExtension */;
+			targetProxy = 4000000000000000000000C0 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		100000000000000000000091 /* Debug */ = {
@@ -648,6 +831,95 @@
 			};
 			name = Release;
 		};
+		300000000000000000000091 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = R6R5P8H5UP;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.pavel.planner.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SUPPORTED_PLATFORMS = macosx;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/PlannerApp-macOS.app/Contents/MacOS/PlannerApp-macOS";
+			};
+			name = Debug;
+		};
+		300000000000000000000092 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = R6R5P8H5UP;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.pavel.planner.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SUPPORTED_PLATFORMS = macosx;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/PlannerApp-macOS.app/Contents/MacOS/PlannerApp-macOS";
+			};
+			name = Release;
+		};
+		400000000000000000000091 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = R6R5P8H5UP;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = PlannerWidgets/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.pavel.planner.ios.ladyginpavel.widget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG WIDGET_EXTENSION";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		400000000000000000000092 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = R6R5P8H5UP;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = PlannerWidgets/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.pavel.planner.ios.ladyginpavel.widget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -674,6 +946,24 @@
 			buildConfigurations = (
 				100000000000000000000097 /* Debug */,
 				100000000000000000000098 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		300000000000000000000090 /* Build configuration list for PBXNativeTarget "PlannerAppTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				300000000000000000000091 /* Debug */,
+				300000000000000000000092 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		400000000000000000000090 /* Build configuration list for PBXNativeTarget "PlannerTodayWidgetExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				400000000000000000000091 /* Debug */,
+				400000000000000000000092 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

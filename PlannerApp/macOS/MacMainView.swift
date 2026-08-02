@@ -236,6 +236,7 @@ struct MacMainView: View {
             deleteTask: deleteTask,
             deleteProject: deleteProject,
             completeTask: completeTask,
+            createKanbanTask: createKanbanTask,
             moveTask: moveTask,
             rescheduleTask: rescheduleTask,
             setTaskDue: setTaskDue,
@@ -451,6 +452,16 @@ struct MacMainView: View {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    private func createKanbanTask(_ title: String, status: TaskStatus) {
+        do {
+            let columnTasks = tasks.filter { $0.status == status && $0.showInKanban }
+            let task = try PlannerDataService.createTask(title: title, context: modelContext, status: status)
+            task.manualOrder = KanbanService.nextManualOrder(in: columnTasks)
+            try PlannerDataService.markTaskUpdated(task, context: modelContext)
+            selectedTaskID = task.id
+        } catch { errorMessage = error.localizedDescription }
     }
 
     private func deleteTask(_ task: PlannerTask) {
@@ -976,6 +987,7 @@ private struct MacContentView: View {
     let deleteTask: (PlannerTask) -> Void
     let deleteProject: (Project) -> Void
     let completeTask: (PlannerTask) -> Void
+    let createKanbanTask: (String, TaskStatus) -> Void
     let moveTask: (PlannerTask, TaskStatus, PlannerTask?, PlannerTask?) -> Void
     let rescheduleTask: (PlannerTask, Date) -> Void
     let setTaskDue: (PlannerTask, Date) -> Void
@@ -1018,6 +1030,7 @@ private struct MacContentView: View {
                     columns: kanbanColumns,
                     searchText: searchText,
                     selectedTaskID: $selectedTaskID,
+                    createTask: createKanbanTask,
                     moveTask: moveTask
                 )
             case .calendar:
@@ -1475,13 +1488,35 @@ private struct KanbanBoardView: View {
     let columns: [KanbanColumn]
     let searchText: String
     @Binding var selectedTaskID: UUID?
+    let createTask: (String, TaskStatus) -> Void
     let moveTask: (PlannerTask, TaskStatus, PlannerTask?, PlannerTask?) -> Void
+    @State private var selectedProjectID: UUID?
+    @State private var selectedPriority: Priority?
 
     private var isSearching: Bool {
         !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Menu(selectedProjectID.flatMap(projectTitle) ?? "Все проекты") {
+                    Button("Все проекты") { selectedProjectID = nil }
+                    ForEach(projects, id: \.id) { project in
+                        Button(project.title) { selectedProjectID = project.id }
+                    }
+                }
+                Menu(selectedPriority?.displayName ?? "Любой приоритет") {
+                    Button("Любой приоритет") { selectedPriority = nil }
+                    ForEach(Priority.allCases) { priority in
+                        Button(priority.displayName) { selectedPriority = priority }
+                    }
+                }
+                Spacer()
+            }
+            .padding(.horizontal)
+            .padding(.top, 8)
+
         GeometryReader { proxy in
             let columnHeight = max(proxy.size.height - 32, 420)
 
@@ -1497,12 +1532,13 @@ private struct KanbanBoardView: View {
                 } else {
                     ScrollView([.horizontal, .vertical]) {
                         HStack(alignment: .top, spacing: 12) {
-                            ForEach(columns) { column in
+                            ForEach(filteredColumns) { column in
                                 KanbanColumnView(
                                     column: column,
-                                    allColumns: columns,
+                                    allColumns: filteredColumns,
                                     minHeight: columnHeight,
                                     selectedTaskID: $selectedTaskID,
+                                    createTask: createTask,
                                     moveTask: moveTask
                                 )
                                 .frame(width: 270, alignment: .top)
@@ -1514,8 +1550,25 @@ private struct KanbanBoardView: View {
                 }
             }
         }
+        }
         .background(PlannerTheme.windowBackground)
     }
+
+    private var filteredColumns: [KanbanColumn] {
+        columns.map { column in
+            KanbanColumn(status: column.status, title: column.title, tasks: column.tasks.filter {
+                (selectedProjectID == nil || $0.project?.id == selectedProjectID)
+                    && (selectedPriority == nil || $0.priority == selectedPriority)
+            })
+        }
+    }
+
+    private var projects: [Project] {
+        var seen = Set<UUID>()
+        return columns.flatMap(\.tasks).compactMap(\.project).filter { seen.insert($0.id).inserted }
+            .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+    }
+    private func projectTitle(_ id: UUID) -> String? { projects.first { $0.id == id }?.title }
 }
 
 private struct KanbanColumnView: View {
@@ -1523,7 +1576,10 @@ private struct KanbanColumnView: View {
     let allColumns: [KanbanColumn]
     let minHeight: CGFloat
     @Binding var selectedTaskID: UUID?
+    let createTask: (String, TaskStatus) -> Void
     let moveTask: (PlannerTask, TaskStatus, PlannerTask?, PlannerTask?) -> Void
+    @State private var quickTitle = ""
+    @State private var targetedTaskID: UUID?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -1537,9 +1593,43 @@ private struct KanbanColumnView: View {
             }
 
             VStack(spacing: 8) {
-                ForEach(column.tasks) { task in
+                ForEach(Array(column.tasks.enumerated()), id: \.element.id) { index, task in
+                    if targetedTaskID == task.id {
+                        RoundedRectangle(cornerRadius: 2).fill(PlannerTheme.accent).frame(height: 3)
+                    }
                     KanbanCardView(task: task) {
                         selectedTaskID = task.id
+                    }
+                    .onDrop(
+                        of: [.plainText],
+                        isTargeted: Binding(
+                            get: { targetedTaskID == task.id },
+                            set: { targetedTaskID = $0 ? task.id : nil }
+                        )
+                    ) { providers in
+                        loadTask(from: providers) { dropped in
+                            let withoutDropped = column.tasks.filter { $0.id != dropped.id }
+                            let targetIndex = withoutDropped.firstIndex { $0.id == task.id } ?? min(index, withoutDropped.count)
+                            let previous = targetIndex > 0 ? withoutDropped[targetIndex - 1] : nil
+                            let next = targetIndex < withoutDropped.count ? withoutDropped[targetIndex] : nil
+                            moveTask(dropped, column.status, previous, next)
+                        }
+                        return true
+                    }
+                    .contextMenu {
+                        if index > 0 {
+                            Button("Переместить выше") {
+                                moveTask(task, column.status, index > 1 ? column.tasks[index - 2] : nil, column.tasks[index - 1])
+                            }
+                        }
+                        if index + 1 < column.tasks.count {
+                            Button("Переместить ниже") {
+                                moveTask(task, column.status, column.tasks[index + 1], index + 2 < column.tasks.count ? column.tasks[index + 2] : nil)
+                            }
+                        }
+                        ForEach(TaskStatus.allCases.filter { $0 != column.status }) { status in
+                            Button("В \(status.displayName)") { moveTask(task, status, nil, nil) }
+                        }
                     }
                 }
 
@@ -1553,6 +1643,12 @@ private struct KanbanColumnView: View {
                             RoundedRectangle(cornerRadius: 8)
                                 .stroke(PlannerTheme.subtleBorder, lineWidth: 0.5)
                         )
+                }
+
+                HStack {
+                    TextField("Новая задача", text: $quickTitle).textFieldStyle(.roundedBorder).onSubmit(addTask)
+                    Button(action: addTask) { Image(systemName: "plus") }
+                        .disabled(quickTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .top)
@@ -1577,6 +1673,13 @@ private struct KanbanColumnView: View {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(PlannerTheme.subtleBorder, lineWidth: 0.5)
         )
+    }
+
+    private func addTask() {
+        let title = quickTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty else { return }
+        createTask(title, column.status)
+        quickTitle = ""
     }
 
     private func lastTask(excluding task: PlannerTask) -> PlannerTask? {
@@ -1728,7 +1831,8 @@ private struct CalendarWeekView: View {
                         timeColumnWidth: timeColumnWidth,
                         dayColumnWidth: dayColumnWidth,
                         selectTask: openTaskInspector,
-                        rescheduleTask: rescheduleTask
+                        rescheduleTask: rescheduleTask,
+                        setTaskDue: setTaskDue
                     )
 
                     HStack(alignment: .top, spacing: 0) {
@@ -1873,6 +1977,7 @@ private struct CalendarAllDayRow: View {
     let dayColumnWidth: CGFloat
     let selectTask: (UUID) -> Void
     let rescheduleTask: (PlannerTask, Date) -> Void
+    let setTaskDue: (PlannerTask, Date) -> Void
 
     var body: some View {
         HStack(alignment: .top, spacing: 0) {
@@ -1890,7 +1995,8 @@ private struct CalendarAllDayRow: View {
                     allPlacements: placements,
                     dayColumnWidth: dayColumnWidth,
                     selectTask: selectTask,
-                    rescheduleTask: rescheduleTask
+                    rescheduleTask: rescheduleTask,
+                    setTaskDue: setTaskDue
                 )
             }
         }
@@ -1908,6 +2014,7 @@ private struct CalendarAllDayCell: View {
     let dayColumnWidth: CGFloat
     let selectTask: (UUID) -> Void
     let rescheduleTask: (PlannerTask, Date) -> Void
+    let setTaskDue: (PlannerTask, Date) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -1933,8 +2040,10 @@ private struct CalendarAllDayCell: View {
         .background(PlannerTheme.panelBackground.opacity(0.68), in: Rectangle())
         .border(PlannerTheme.subtleBorder, width: 0.5)
         .onDrop(of: [.plainText], isTargeted: nil) { providers in
-            CalendarDragHelper.loadTask(from: providers, placements: allPlacementsForLookup) { task in
-                rescheduleTask(task, CalendarService.date(for: day, hour: 0, minute: 0))
+            CalendarDragHelper.loadPlacement(from: providers, placements: allPlacementsForLookup) { placement in
+                let date = CalendarService.moving(placement, toDay: day, minuteOfDay: 0)
+                if placement.kind == .due { setTaskDue(placement.task, date) }
+                else { rescheduleTask(placement.task, date) }
             }
 
             return true
@@ -1982,10 +2091,13 @@ private struct CalendarTimelineDayColumn: View {
                 timelineHeight: timelineHeight
             )
 
-            ForEach(placements) { placement in
+            ForEach(CalendarService.layoutOverlaps(placements)) { layout in
+                let placement = layout.placement
+                let availableWidth = dayColumnWidth - 12
+                let laneWidth = availableWidth / CGFloat(layout.laneCount)
                 CalendarTaskBlock(
                     placement: placement,
-                    width: dayColumnWidth - 12,
+                    width: max(42, laneWidth - 3),
                     height: height(for: placement),
                     slotHeight: slotHeight,
                     selectTask: { selectTask(placement.task.id) },
@@ -1993,7 +2105,7 @@ private struct CalendarTimelineDayColumn: View {
                         setTaskDue(placement.task, due)
                     }
                 )
-                .offset(x: 6, y: yOffset(for: placement))
+                .offset(x: 6 + (CGFloat(layout.lane) * laneWidth), y: yOffset(for: placement))
             }
         }
         .frame(width: dayColumnWidth, height: timelineHeight, alignment: .topLeading)
@@ -2005,7 +2117,8 @@ private struct CalendarTimelineDayColumn: View {
                 placements: allPlacements,
                 slotHeight: slotHeight,
                 timelineHeight: timelineHeight,
-                rescheduleTask: rescheduleTask
+                rescheduleTask: rescheduleTask,
+                setTaskDue: setTaskDue
             )
         )
         .border(PlannerTheme.subtleBorder, width: 0.5)
@@ -2052,6 +2165,7 @@ private struct CalendarTimelineDropDelegate: DropDelegate {
     let slotHeight: CGFloat
     let timelineHeight: CGFloat
     let rescheduleTask: (PlannerTask, Date) -> Void
+    let setTaskDue: (PlannerTask, Date) -> Void
 
     func validateDrop(info: DropInfo) -> Bool {
         info.hasItemsConforming(to: [.plainText])
@@ -2063,11 +2177,12 @@ private struct CalendarTimelineDropDelegate: DropDelegate {
 
     func performDrop(info: DropInfo) -> Bool {
         let slotIndex = slotIndex(for: info.location.y)
-        CalendarDragHelper.loadTask(from: info.itemProviders(for: [.plainText]), placements: placements) { task in
+        CalendarDragHelper.loadPlacement(from: info.itemProviders(for: [.plainText]), placements: placements) { placement in
             let hour = slotIndex / 2
             let minute = slotIndex.isMultiple(of: 2) ? 0 : 30
-            let date = CalendarService.date(for: day, hour: hour, minute: minute)
-            rescheduleTask(task, date)
+            let date = CalendarService.moving(placement, toDay: day, minuteOfDay: hour * 60 + minute)
+            if placement.kind == .due { setTaskDue(placement.task, date) }
+            else { rescheduleTask(placement.task, date) }
         }
 
         return true
@@ -2123,7 +2238,7 @@ private struct CalendarTaskBlock: View {
             }
             .buttonStyle(.plain)
             .onDrag {
-                NSItemProvider(object: placement.task.id.uuidString as NSString)
+                NSItemProvider(object: placement.id as NSString)
             }
 
             if canResize {
@@ -2324,35 +2439,30 @@ private struct CalendarResizePreview: View {
 }
 
 private enum CalendarDragHelper {
-    static func loadTask(
+    static func loadPlacement(
         from providers: [NSItemProvider],
         placements: [CalendarTaskPlacement],
-        completion: @escaping (PlannerTask) -> Void
+        completion: @escaping (CalendarTaskPlacement) -> Void
     ) {
         guard let provider = providers.first else {
             return
         }
 
         provider.loadObject(ofClass: NSString.self) { object, _ in
-            guard
-                let rawID = object as? String,
-                let taskID = UUID(uuidString: rawID)
-            else {
-                return
-            }
+            guard let rawID = object as? String else { return }
 
             DispatchQueue.main.async {
-                guard let task = placements.first(where: { $0.task.id == taskID })?.task else {
-                    return
-                }
-
-                completion(task)
+                let placement = placements.first { $0.id == rawID }
+                    ?? UUID(uuidString: rawID).flatMap { id in placements.first { $0.task.id == id } }
+                if let placement { completion(placement) }
             }
         }
     }
 }
 
 private struct SettingsPlaceholderView: View {
+    @Environment(\.modelContext) private var modelContext
+    @Query(sort: \SyncConflict.createdAt, order: .reverse) private var syncConflicts: [SyncConflict]
     let settings: AppSettings?
     let setHideEmptyKanbanColumns: (Bool, AppSettings) -> Void
     let setTheme: (AppTheme, AppSettings) -> Void
@@ -2374,6 +2484,9 @@ private struct SettingsPlaceholderView: View {
     let importBackup: () -> Void
 
     @State private var isClearCompletedConfirmationPresented = false
+    @State private var serverURLDraft = ""
+    @State private var fingerprintDraft = ""
+    @State private var tokenDraft = ""
 
     var body: some View {
         Form {
@@ -2435,28 +2548,19 @@ private struct SettingsPlaceholderView: View {
 
                     TextField(
                         "Server URL",
-                        text: Binding(
-                            get: { settings.syncServerURL },
-                            set: { setSyncServerURL($0, settings) }
-                        )
+                        text: $serverURLDraft
                     )
                     .textFieldStyle(.roundedBorder)
 
                     SecureField(
                         "API token",
-                        text: Binding(
-                            get: { syncToken },
-                            set: { setSyncToken($0) }
-                        )
+                        text: $tokenDraft
                     )
                     .textFieldStyle(.roundedBorder)
 
                     TextField(
                         "SHA256 fingerprint",
-                        text: Binding(
-                            get: { settings.syncCertificateFingerprint },
-                            set: { setSyncCertificateFingerprint($0, settings) }
-                        )
+                        text: $fingerprintDraft
                     )
                     .textFieldStyle(.roundedBorder)
 
@@ -2466,11 +2570,23 @@ private struct SettingsPlaceholderView: View {
                     LabeledContent("Статус", value: syncStatus)
 
                     HStack {
+                        Button("Отмена") { loadConnectionDrafts(settings) }
+                            .disabled(!connectionIsDirty(settings))
+                        Button("Применить подключение") {
+                            setSyncServerURL(serverURLDraft, settings)
+                            setSyncCertificateFingerprint(fingerprintDraft, settings)
+                            setSyncToken(tokenDraft)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(!connectionIsDirty(settings))
+                    }
+
+                    HStack {
                         Button("Test connection") {
                             testSyncConnection(settings)
                         }
 
-                        Button("Bootstrap server") {
+                        Button("Инициализировать пустой сервер") {
                             bootstrapSync(settings)
                         }
 
@@ -2480,6 +2596,22 @@ private struct SettingsPlaceholderView: View {
                     }
                 } else {
                     LabeledContent("Синхронизация", value: "Загрузка")
+                }
+            }
+
+            if !unresolvedConflicts.isEmpty {
+                Section("Конфликты синхронизации") {
+                    ForEach(unresolvedConflicts) { conflict in
+                        HStack {
+                            Text("\(conflict.entityType): \(conflict.entityID)").font(.caption).lineLimit(1)
+                            Spacer()
+                            Button("Сервер") { resolve(conflict, .keepServer) }
+                            Button("Локально") { resolve(conflict, .keepLocal) }
+                            if conflict.entityType == SyncEntityType.task.rawValue || conflict.entityType == SyncEntityType.project.rawValue {
+                                Button("Копия") { resolve(conflict, .duplicateLocal) }
+                            }
+                        }
+                    }
                 }
             }
 
@@ -2522,6 +2654,26 @@ private struct SettingsPlaceholderView: View {
         } message: {
             Text("Будут удалены задачи со статусом «Выполнено». Удаление попадет в синхронизацию.")
         }
+        .onAppear { if let settings { loadConnectionDrafts(settings) } }
+        .onChange(of: settings?.id) { _, _ in if let settings { loadConnectionDrafts(settings) } }
+    }
+
+    private func loadConnectionDrafts(_ settings: AppSettings) {
+        serverURLDraft = settings.syncServerURL
+        fingerprintDraft = settings.syncCertificateFingerprint
+        tokenDraft = syncToken
+    }
+
+    private func connectionIsDirty(_ settings: AppSettings) -> Bool {
+        serverURLDraft != settings.syncServerURL
+            || fingerprintDraft != settings.syncCertificateFingerprint
+            || tokenDraft != syncToken
+    }
+
+    private var unresolvedConflicts: [SyncConflict] { syncConflicts.filter { $0.resolvedAt == nil } }
+
+    private func resolve(_ conflict: SyncConflict, _ resolution: SyncConflictResolution) {
+        try? SyncService.resolve(conflict, resolution: resolution, context: modelContext)
     }
 }
 #endif

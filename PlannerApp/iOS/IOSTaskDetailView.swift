@@ -5,78 +5,73 @@ import SwiftUI
 struct IOSTaskDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
-    @Bindable var task: PlannerTask
+    let task: PlannerTask
     let projects: [Project]
     let deleteTask: (PlannerTask) -> Void
 
+    @State private var draft: TaskDraft
     @State private var newChecklistTitle = ""
     @State private var errorMessage: String?
-    @State private var isDeleteConfirmationPresented = false
+    @State private var confirmation: Confirmation?
+
+    private enum Confirmation { case cancel, delete }
+
+    init(task: PlannerTask, projects: [Project], deleteTask: @escaping (PlannerTask) -> Void) {
+        self.task = task
+        self.projects = projects
+        self.deleteTask = deleteTask
+        _draft = State(initialValue: TaskDraft(task: task))
+    }
+
+    private var isDirty: Bool { draft != TaskDraft(task: task) }
 
     var body: some View {
         Form {
             Section("Задача") {
-                TextField("Название", text: $task.title)
-                    .onChange(of: task.title) { _, _ in saveTaskChanges() }
-
-                Picker("Статус", selection: statusBinding) {
-                    ForEach(TaskStatus.allCases) { status in
-                        Text(status.displayName).tag(status)
-                    }
+                TextField("Название", text: $draft.title)
+                Picker("Статус", selection: $draft.status) {
+                    ForEach(TaskStatus.allCases) { Text($0.displayName).tag($0) }
                 }
-
-                Picker("Приоритет", selection: priorityBinding) {
-                    ForEach(Priority.allCases) { priority in
-                        Text(priority.displayName).tag(priority)
-                    }
+                Picker("Приоритет", selection: $draft.priority) {
+                    ForEach(Priority.allCases) { Text($0.displayName).tag($0) }
                 }
-
-                Picker("Повтор", selection: recurrenceBinding) {
-                    ForEach(TaskRecurrence.allCases) { recurrence in
-                        Text(recurrence.displayName).tag(recurrence)
-                    }
+                Picker("Повтор", selection: $draft.recurrence) {
+                    ForEach(TaskRecurrence.allCases) { Text($0.displayName).tag($0) }
                 }
-
-                Picker("Проект", selection: projectBinding) {
+                Picker("Проект", selection: $draft.projectID) {
                     Text("Без проекта").tag(Optional<UUID>.none)
-                    ForEach(projects) { project in
-                        Text(project.title).tag(Optional(project.id))
-                    }
+                    ForEach(projects) { Text($0.title).tag(Optional($0.id)) }
                 }
+                Toggle("Показывать в канбане", isOn: $draft.showInKanban)
             }
 
             Section("Даты") {
-                IOSOptionalDatePicker(title: "Запланировано", date: scheduledBinding)
-                IOSOptionalDatePicker(title: "Срок", date: dueBinding)
+                IOSOptionalDatePicker(title: "Запланировано", date: $draft.scheduled)
+                IOSOptionalDatePicker(title: "Срок", date: $draft.due)
+                if draft.recurrence != .none, draft.scheduled == nil, draft.due == nil {
+                    Label("Для повторения нужна хотя бы одна дата", systemImage: "exclamationmark.triangle.fill")
+                        .foregroundStyle(PlannerTheme.warning)
+                }
             }
 
             Section("Чеклист") {
-                ForEach(task.checklistItems.sorted { $0.order < $1.order }) { item in
-                    IOSChecklistItemRow(
-                        item: item,
-                        task: task,
-                        onError: { errorMessage = $0.localizedDescription }
-                    )
+                ForEach($draft.checklistItems) { $item in
+                    HStack {
+                        Toggle("", isOn: $item.isDone).labelsHidden()
+                        TextField("Пункт чеклиста", text: $item.title)
+                    }
                 }
-                .onDelete(perform: deleteChecklistItems)
+                .onDelete { draft.checklistItems.remove(atOffsets: $0) }
 
                 HStack {
                     TextField("Новый пункт чеклиста", text: $newChecklistTitle)
-                        .submitLabel(.done)
-                        .onSubmit(addChecklistItem)
-
-                    Button(action: addChecklistItem) {
-                        Image(systemName: "plus.circle.fill")
-                    }
-                    .disabled(newChecklistTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .submitLabel(.done).onSubmit(addChecklistItem)
+                    Button(action: addChecklistItem) { Image(systemName: "plus.circle.fill") }
+                        .disabled(newChecklistTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
 
-            Section("Заметки") {
-                TextEditor(text: $task.notes)
-                    .frame(minHeight: 120)
-                    .onChange(of: task.notes) { _, _ in saveTaskChanges() }
-            }
+            Section("Заметки") { TextEditor(text: $draft.notes).frame(minHeight: 120) }
 
             Section("Метаданные") {
                 LabeledContent("Создана", value: task.createdAt.formatted(date: .abbreviated, time: .shortened))
@@ -84,10 +79,8 @@ struct IOSTaskDetailView: View {
                 LabeledContent("Завершена", value: task.completedAt?.formatted(date: .abbreviated, time: .shortened) ?? "Не завершена")
             }
 
-            Section("Удаление") {
-                Button(role: .destructive) {
-                    isDeleteConfirmationPresented = true
-                } label: {
+            Section {
+                Button(role: .destructive) { confirmation = .delete } label: {
                     Label("Удалить задачу", systemImage: "trash")
                 }
             }
@@ -96,220 +89,67 @@ struct IOSTaskDetailView: View {
         .background(PlannerTheme.windowBackground)
         .tint(PlannerTheme.accent)
         .navigationTitle("Задача")
+        .interactiveDismissDisabled(isDirty)
         .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Отмена") { isDirty ? (confirmation = .cancel) : dismiss() }
+            }
             ToolbarItem(placement: .confirmationAction) {
-                Button("Готово") {
-                    dismiss()
-                }
+                Button("Сохранить", action: save).disabled(!isDirty)
             }
         }
-        .confirmationDialog(
-            "Удалить задачу?",
-            isPresented: $isDeleteConfirmationPresented,
-            titleVisibility: .visible
-        ) {
-            Button("Удалить", role: .destructive) {
-                deleteTask(task)
-                dismiss()
+        .confirmationDialog(confirmationTitle, isPresented: confirmationBinding, titleVisibility: .visible) {
+            if confirmation == .delete {
+                Button("Удалить", role: .destructive) { deleteTask(task); dismiss() }
+            } else {
+                Button("Сохранить", action: save)
+                Button("Отбросить изменения", role: .destructive) { dismiss() }
             }
-
-            Button("Отмена", role: .cancel) {}
-        } message: {
-            Text("Задача будет удалена с этого устройства и попадет в синхронизацию удаления.")
+            Button("Остаться", role: .cancel) {}
         }
         .alert("Ошибка планировщика", isPresented: errorBinding) {
-            Button("ОК", role: .cancel) {
-                errorMessage = nil
-            }
-        } message: {
-            Text(errorMessage ?? "")
-        }
+            Button("ОК", role: .cancel) { errorMessage = nil }
+        } message: { Text(errorMessage ?? "") }
     }
 
-    private var statusBinding: Binding<TaskStatus> {
-        Binding(
-            get: { task.status },
-            set: { newValue in
-                do {
-                    try PlannerDataService.setTaskStatus(task, status: newValue, context: modelContext)
-                } catch {
-                    errorMessage = error.localizedDescription
-                }
-            }
-        )
+    private var confirmationTitle: String {
+        confirmation == .delete ? "Удалить задачу?" : "Отбросить изменения?"
     }
-
-    private var priorityBinding: Binding<Priority> {
-        Binding(
-            get: { task.priority },
-            set: { newValue in
-                task.priority = newValue
-                saveTaskChanges()
-            }
-        )
+    private var confirmationBinding: Binding<Bool> {
+        Binding(get: { confirmation != nil }, set: { if !$0 { confirmation = nil } })
     }
-
-    private var recurrenceBinding: Binding<TaskRecurrence> {
-        Binding(
-            get: { task.recurrence },
-            set: { newValue in
-                task.recurrence = newValue
-                saveTaskChanges()
-            }
-        )
-    }
-
-    private var projectBinding: Binding<UUID?> {
-        Binding(
-            get: { task.project?.id },
-            set: { newValue in
-                task.project = projects.first { $0.id == newValue }
-                saveTaskChanges()
-            }
-        )
-    }
-
-    private var scheduledBinding: Binding<Date?> {
-        Binding(
-            get: { task.scheduled },
-            set: { newValue in
-                task.scheduled = newValue
-                saveTaskChanges()
-            }
-        )
-    }
-
-    private var dueBinding: Binding<Date?> {
-        Binding(
-            get: { task.due },
-            set: { newValue in
-                task.due = newValue
-                saveTaskChanges()
-            }
-        )
-    }
-
     private var errorBinding: Binding<Bool> {
-        Binding(
-            get: { errorMessage != nil },
-            set: { if !$0 { errorMessage = nil } }
-        )
+        Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })
     }
 
     private func addChecklistItem() {
-        do {
-            try PlannerDataService.createChecklistItem(
-                title: newChecklistTitle,
-                for: task,
-                context: modelContext
-            )
-            newChecklistTitle = ""
-        } catch {
-            errorMessage = error.localizedDescription
-        }
+        let title = newChecklistTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty else { return }
+        draft.checklistItems.append(ChecklistItemDraft(title: title, order: draft.checklistItems.count))
+        newChecklistTitle = ""
     }
-
-    private func deleteChecklistItems(at offsets: IndexSet) {
-        let items = task.checklistItems.sorted { $0.order < $1.order }
-
+    private func save() {
         do {
-            for offset in offsets {
-                try PlannerDataService.deleteChecklistItem(
-                    items[offset],
-                    from: task,
-                    context: modelContext
-                )
-            }
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-
-    private func saveTaskChanges() {
-        do {
-            try PlannerDataService.markTaskUpdated(task, context: modelContext)
-        } catch {
-            errorMessage = error.localizedDescription
-        }
+            try PlannerDataService.saveTask(task, draft: draft, projects: projects, context: modelContext)
+            dismiss()
+        } catch { errorMessage = error.localizedDescription }
     }
 }
 
 private struct IOSOptionalDatePicker: View {
     let title: String
     @Binding var date: Date?
-
     var body: some View {
         Toggle(title, isOn: isEnabled)
-
         if date != nil {
-            DatePicker(
-                title,
-                selection: concreteDate,
-                displayedComponents: [.date, .hourAndMinute]
-            )
+            DatePicker(title, selection: concreteDate, displayedComponents: [.date, .hourAndMinute])
         }
     }
-
     private var isEnabled: Binding<Bool> {
-        Binding(
-            get: { date != nil },
-            set: { enabled in
-                date = enabled ? (date ?? .now) : nil
-            }
-        )
+        Binding(get: { date != nil }, set: { date = $0 ? (date ?? .now) : nil })
     }
-
     private var concreteDate: Binding<Date> {
-        Binding(
-            get: { date ?? .now },
-            set: { date = $0 }
-        )
-    }
-}
-
-private struct IOSChecklistItemRow: View {
-    @Environment(\.modelContext) private var modelContext
-    @Bindable var item: ChecklistItem
-    let task: PlannerTask
-    let onError: (Error) -> Void
-
-    var body: some View {
-        HStack {
-            Toggle("", isOn: doneBinding)
-                .labelsHidden()
-
-            TextField("Пункт чеклиста", text: $item.title)
-                .onChange(of: item.title) { _, newValue in
-                    do {
-                        try PlannerDataService.updateChecklistItemTitle(
-                            item,
-                            title: newValue,
-                            task: task,
-                            context: modelContext
-                        )
-                    } catch {
-                        onError(error)
-                    }
-                }
-        }
-    }
-
-    private var doneBinding: Binding<Bool> {
-        Binding(
-            get: { item.isDone },
-            set: { newValue in
-                do {
-                    try PlannerDataService.setChecklistItemDone(
-                        item,
-                        isDone: newValue,
-                        task: task,
-                        context: modelContext
-                    )
-                } catch {
-                    onError(error)
-                }
-            }
-        )
+        Binding(get: { date ?? .now }, set: { date = $0 })
     }
 }
 #endif

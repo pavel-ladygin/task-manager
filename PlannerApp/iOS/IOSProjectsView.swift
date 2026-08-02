@@ -95,8 +95,7 @@ struct IOSProjectsView: View {
 }
 
 private struct IOSProjectPageView: View {
-    @Environment(\.modelContext) private var modelContext
-    @Bindable var project: Project
+    let project: Project
     let projects: [Project]
     let tasks: [PlannerTask]
     let progress: ProjectProgress
@@ -104,7 +103,7 @@ private struct IOSProjectPageView: View {
     let completeTask: (PlannerTask) -> Void
 
     @State private var selectedTask: PlannerTask?
-    @State private var errorMessage: String?
+    @State private var isProjectEditorPresented = false
 
     private var activeTasks: [PlannerTask] {
         tasks.filter(TaskListService.isActive)
@@ -118,12 +117,12 @@ private struct IOSProjectPageView: View {
         List {
             Section {
                 VStack(alignment: .leading, spacing: 10) {
-                    Picker("Цвет проекта", selection: colorBinding) {
-                        ForEach(ProjectColorPreset.allCases) { color in
-                            Text(color.displayName).tag(color)
-                        }
-                    }
-                    .pickerStyle(.menu)
+                    LabeledContent("Статус", value: project.status.displayName)
+                    LabeledContent("Цвет", value: project.colorPreset.displayName)
+                    LabeledContent(
+                        "Срок",
+                        value: project.deadline?.formatted(date: .abbreviated, time: .omitted) ?? "Не задан"
+                    )
 
                     Text(project.notes.isEmpty ? "Нет заметок" : project.notes)
                         .foregroundStyle(PlannerTheme.secondaryText)
@@ -170,12 +169,12 @@ private struct IOSProjectPageView: View {
         .scrollContentBackground(.hidden)
         .background(PlannerTheme.windowBackground)
         .tint(PlannerTheme.accent)
-        .alert("Ошибка планировщика", isPresented: errorBinding) {
-            Button("ОК", role: .cancel) {
-                errorMessage = nil
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button { isProjectEditorPresented = true } label: {
+                    Label("Редактировать", systemImage: "pencil")
+                }
             }
-        } message: {
-            Text(errorMessage ?? "")
         }
         .sheet(item: $selectedTask) { task in
             NavigationStack {
@@ -189,26 +188,82 @@ private struct IOSProjectPageView: View {
                 )
             }
         }
+        .sheet(isPresented: $isProjectEditorPresented) {
+            NavigationStack {
+                IOSProjectEditorView(project: project)
+            }
+        }
+    }
+}
+
+private struct IOSProjectEditorView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
+    let project: Project
+    @State private var draft: ProjectDraft
+    @State private var errorMessage: String?
+    @State private var confirmCancel = false
+
+    init(project: Project) {
+        self.project = project
+        _draft = State(initialValue: ProjectDraft(project: project))
     }
 
-    private var colorBinding: Binding<ProjectColorPreset> {
-        Binding(
-            get: { project.colorPreset },
-            set: { newValue in
-                do {
-                    try PlannerDataService.setProjectColor(newValue, project: project, context: modelContext)
-                } catch {
-                    errorMessage = error.localizedDescription
+    private var isDirty: Bool { draft != ProjectDraft(project: project) }
+
+    var body: some View {
+        Form {
+            Section("Проект") {
+                TextField("Название", text: $draft.title)
+                Picker("Статус", selection: $draft.status) {
+                    ForEach(ProjectStatus.allCases) { Text($0.displayName).tag($0) }
+                }
+                Picker("Цвет", selection: $draft.color) {
+                    ForEach(ProjectColorPreset.allCases) { Text($0.displayName).tag($0) }
                 }
             }
-        )
+            Section("Срок") {
+                Toggle("Есть срок", isOn: deadlineEnabled)
+                if draft.deadline != nil {
+                    DatePicker("Срок", selection: deadline, displayedComponents: .date)
+                }
+            }
+            Section("Заметки") { TextEditor(text: $draft.notes).frame(minHeight: 140) }
+        }
+        .navigationTitle("Редактировать проект")
+        .interactiveDismissDisabled(isDirty)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Отмена") { isDirty ? (confirmCancel = true) : dismiss() }
+            }
+            ToolbarItem(placement: .confirmationAction) {
+                Button("Сохранить", action: save).disabled(!isDirty)
+            }
+        }
+        .confirmationDialog("Отбросить изменения?", isPresented: $confirmCancel) {
+            Button("Сохранить", action: save)
+            Button("Отбросить", role: .destructive) { dismiss() }
+            Button("Остаться", role: .cancel) {}
+        }
+        .alert("Ошибка планировщика", isPresented: errorBinding) {
+            Button("ОК", role: .cancel) { errorMessage = nil }
+        } message: { Text(errorMessage ?? "") }
     }
 
+    private var deadlineEnabled: Binding<Bool> {
+        Binding(get: { draft.deadline != nil }, set: { draft.deadline = $0 ? (draft.deadline ?? .now) : nil })
+    }
+    private var deadline: Binding<Date> {
+        Binding(get: { draft.deadline ?? .now }, set: { draft.deadline = $0 })
+    }
     private var errorBinding: Binding<Bool> {
-        Binding(
-            get: { errorMessage != nil },
-            set: { if !$0 { errorMessage = nil } }
-        )
+        Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })
+    }
+    private func save() {
+        do {
+            try PlannerDataService.saveProject(project, draft: draft, context: modelContext)
+            dismiss()
+        } catch { errorMessage = error.localizedDescription }
     }
 }
 

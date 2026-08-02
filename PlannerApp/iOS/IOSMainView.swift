@@ -54,6 +54,7 @@ struct IOSMainView: View {
                     ),
                     projects: projects,
                     searchText: $searchText,
+                    createTask: createKanbanTask,
                     moveTask: moveTask,
                     deleteTask: deleteTask,
                     completeTask: completeTask
@@ -79,7 +80,8 @@ struct IOSMainView: View {
                     goToPreviousWeek: { moveSelectedCalendarWeek(by: -1) },
                     goToNextWeek: { moveSelectedCalendarWeek(by: 1) },
                     goToCurrentWeek: goToCurrentCalendarWeek,
-                    rescheduleTask: rescheduleTask,
+                    movePlacement: moveCalendarPlacement,
+                    resizePlacement: resizeCalendarPlacement,
                     deleteTask: deleteTask,
                     completeTask: completeTask
                 )
@@ -301,6 +303,15 @@ struct IOSMainView: View {
         }
     }
 
+    private func createKanbanTask(_ title: String, status: TaskStatus) {
+        do {
+            let columnTasks = tasks.filter { $0.status == status && $0.showInKanban }
+            let task = try PlannerDataService.createTask(title: title, context: modelContext, status: status)
+            task.manualOrder = KanbanService.nextManualOrder(in: columnTasks)
+            try PlannerDataService.markTaskUpdated(task, context: modelContext)
+        } catch { errorMessage = error.localizedDescription }
+    }
+
     private func deleteTask(_ task: PlannerTask) {
         do {
             try PlannerDataService.deleteTask(task, context: modelContext)
@@ -365,6 +376,24 @@ struct IOSMainView: View {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    private func moveCalendarPlacement(_ placement: CalendarTaskPlacement, to date: Date) {
+        do {
+            if placement.kind == .due {
+                try PlannerDataService.setTaskDue(placement.task, to: date, context: modelContext)
+            } else {
+                try PlannerDataService.rescheduleTask(placement.task, to: date, context: modelContext)
+            }
+            scheduleAutoSync(reason: "Задача перенесена")
+        } catch { errorMessage = error.localizedDescription }
+    }
+
+    private func resizeCalendarPlacement(_ placement: CalendarTaskPlacement, to due: Date) {
+        do {
+            try PlannerDataService.setTaskDue(placement.task, to: due, context: modelContext)
+            scheduleAutoSync(reason: "Изменена длительность задачи")
+        } catch { errorMessage = error.localizedDescription }
     }
 
     private func moveSelectedCalendarWeek(by value: Int) {

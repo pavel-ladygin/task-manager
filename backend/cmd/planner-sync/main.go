@@ -19,6 +19,13 @@ func main() {
 	if token == "" {
 		log.Fatal("PLANNER_SYNC_TOKEN is required")
 	}
+	widgetToken := os.Getenv("PLANNER_WIDGET_TOKEN")
+	if len(widgetToken) < 32 {
+		log.Fatal("PLANNER_WIDGET_TOKEN must contain at least 32 characters")
+	}
+	if widgetToken == token {
+		log.Fatal("PLANNER_WIDGET_TOKEN must differ from PLANNER_SYNC_TOKEN")
+	}
 
 	syncStore, err := store.Open(dbPath)
 	if err != nil {
@@ -26,7 +33,7 @@ func main() {
 	}
 	defer syncStore.Close()
 
-	handler := server.New(syncStore, token)
+	handler := server.New(syncStore, token, widgetToken)
 	httpServer := &http.Server{
 		Addr:              addr,
 		Handler:           handler,

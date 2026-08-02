@@ -17,6 +17,10 @@ struct TaskBackupDTO: Codable {
     let status: String
     let priority: String
     let recurrence: String?
+    let recurrenceSeriesID: UUID?
+    let recurrenceAnchorDate: Date?
+    let recurrenceSequence: Int?
+    let showInKanban: Bool?
     let scheduled: Date?
     let due: Date?
     let createdAt: Date
@@ -83,7 +87,8 @@ enum BackupError: LocalizedError {
 
 @MainActor
 enum BackupService {
-    private static let supportedSchemaVersion = 1
+    private static let supportedSchemaVersion = 2
+    private static let readableSchemaVersions: Set<Int> = [1, 2]
 
     private struct BackupVersionEnvelope: Decodable {
         let schemaVersion: Int
@@ -173,6 +178,10 @@ enum BackupService {
                 status: TaskStatus(rawValue: dto.status) ?? .inbox,
                 priority: Priority(rawValue: dto.priority) ?? .none,
                 recurrence: TaskRecurrence(rawValue: dto.recurrence ?? TaskRecurrence.none.rawValue) ?? .none,
+                recurrenceSeriesID: dto.recurrenceSeriesID,
+                recurrenceAnchorDate: dto.recurrenceAnchorDate,
+                recurrenceSequence: dto.recurrenceSequence ?? 0,
+                showInKanban: dto.showInKanban ?? true,
                 scheduled: dto.scheduled,
                 due: dto.due,
                 createdAt: dto.createdAt,
@@ -221,7 +230,7 @@ enum BackupService {
     }
 
     static func validate(_ backup: PlannerBackupDTO) throws {
-        guard backup.schemaVersion == supportedSchemaVersion else {
+        guard readableSchemaVersions.contains(backup.schemaVersion) else {
             throw BackupError.unsupportedSchemaVersion(backup.schemaVersion)
         }
 
@@ -298,7 +307,7 @@ enum BackupService {
 
         do {
             let envelope = try decoder.decode(BackupVersionEnvelope.self, from: data)
-            guard envelope.schemaVersion == supportedSchemaVersion else {
+            guard readableSchemaVersions.contains(envelope.schemaVersion) else {
                 throw BackupError.unsupportedSchemaVersion(envelope.schemaVersion)
             }
             return try decoder.decode(PlannerBackupDTO.self, from: data)
@@ -317,6 +326,10 @@ enum BackupService {
             status: task.status.rawValue,
             priority: task.priority.rawValue,
             recurrence: task.recurrence.rawValue,
+            recurrenceSeriesID: task.recurrenceSeriesID,
+            recurrenceAnchorDate: task.recurrenceAnchorDate,
+            recurrenceSequence: task.recurrenceSequence,
+            showInKanban: task.showInKanban,
             scheduled: task.scheduled,
             due: task.due,
             createdAt: task.createdAt,

@@ -20,6 +20,29 @@ enum AutoSyncService {
         settings: AppSettings,
         token: String
     ) async throws -> SyncResult {
-        try await SyncService.syncNow(context: context, settings: settings, token: token)
+        var lastError: Error?
+        for attempt in 0..<3 {
+            do {
+                return try await SyncService.syncNow(context: context, settings: settings, token: token)
+            } catch {
+                lastError = error
+                guard isTransient(error), attempt < 2 else { throw error }
+                let base = UInt64(1 << attempt) * 1_000_000_000
+                let jitter = UInt64.random(in: 0...350_000_000)
+                try await Task.sleep(nanoseconds: base + jitter)
+            }
+        }
+        throw lastError ?? SyncError.invalidResponse
+    }
+
+    private static func isTransient(_ error: Error) -> Bool {
+        guard let syncError = error as? SyncError else { return true }
+        switch syncError {
+        case .network, .server, .invalidResponse:
+            return true
+        case .disabled, .invalidServerURL, .missingToken, .missingCertificateFingerprint,
+             .protocolMismatch, .serverNotInitialized, .syncInProgress:
+            return false
+        }
     }
 }

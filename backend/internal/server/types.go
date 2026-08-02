@@ -2,35 +2,76 @@ package server
 
 import "encoding/json"
 
-type SyncItem struct {
+type StatusResponse struct {
+	ServerCursor    int64  `json:"serverCursor"`
+	ServerTime      string `json:"serverTime"`
+	ProtocolVersion int    `json:"protocolVersion"`
+	IsEmpty         bool   `json:"isEmpty"`
+}
+
+type Mutation struct {
+	MutationID   string          `json:"mutationID"`
+	EntityType   string          `json:"entityType"`
+	EntityID     string          `json:"entityID"`
+	Operation    string          `json:"operation"`
+	Payload      json.RawMessage `json:"payload,omitempty"`
+	BaseRevision int64           `json:"baseRevision"`
+	CreatedAt    string          `json:"createdAt"`
+}
+
+type MutationRequest struct {
+	DeviceID  string     `json:"deviceID"`
+	Mutations []Mutation `json:"mutations"`
+}
+
+type ServerChange struct {
+	Revision        int64           `json:"revision"`
 	EntityType      string          `json:"entityType"`
 	EntityID        string          `json:"entityID"`
-	PayloadJSON     json.RawMessage `json:"payloadJSON,omitempty"`
-	ClientUpdatedAt string          `json:"clientUpdatedAt"`
-	ServerUpdatedAt string          `json:"serverUpdatedAt,omitempty"`
-	DeletedAt       *string         `json:"deletedAt,omitempty"`
-	Version         int64           `json:"version"`
+	Operation       string          `json:"operation"`
+	Payload         json.RawMessage `json:"payload,omitempty"`
 	SourceDeviceID  string          `json:"sourceDeviceID"`
+	ServerUpdatedAt string          `json:"serverUpdatedAt"`
 }
 
-type PushRequest struct {
-	DeviceID string     `json:"deviceID"`
-	Items    []SyncItem `json:"items"`
+type MutationResult struct {
+	MutationID     string        `json:"mutationID"`
+	Status         string        `json:"status"`
+	ServerRevision int64         `json:"serverRevision"`
+	Current        *ServerChange `json:"current,omitempty"`
 }
 
-type PushResponse struct {
-	ServerCursor int64 `json:"serverCursor"`
-	Accepted     int   `json:"accepted"`
-	Ignored      int   `json:"ignored"`
+type MutationResponse struct {
+	ServerCursor int64            `json:"serverCursor"`
+	Results      []MutationResult `json:"results"`
 }
 
-type PullResponse struct {
-	ServerCursor int64      `json:"serverCursor"`
-	ServerTime   string     `json:"serverTime"`
-	Items        []SyncItem `json:"items"`
+type ChangesResponse struct {
+	ServerCursor int64          `json:"serverCursor"`
+	HasMore      bool           `json:"hasMore"`
+	Changes      []ServerChange `json:"changes"`
 }
 
-type StatusResponse struct {
-	ServerCursor int64  `json:"serverCursor"`
-	ServerTime   string `json:"serverTime"`
+type WidgetSnapshotResponse struct {
+	ServerCursor int64           `json:"serverCursor"`
+	GeneratedAt  string          `json:"generatedAt"`
+	Tasks        []WidgetTask    `json:"tasks"`
+	Projects     []WidgetProject `json:"projects"`
+}
+
+type WidgetTask struct {
+	ID        string  `json:"id"`
+	Title     string  `json:"title"`
+	Status    string  `json:"status"`
+	Priority  string  `json:"priority"`
+	Scheduled *string `json:"scheduled,omitempty"`
+	Due       *string `json:"due,omitempty"`
+	CreatedAt string  `json:"createdAt"`
+	ProjectID *string `json:"projectID,omitempty"`
+}
+
+type WidgetProject struct {
+	ID    string  `json:"id"`
+	Title string  `json:"title"`
+	Color *string `json:"color,omitempty"`
 }

@@ -9,9 +9,6 @@ struct KanbanColumn: Identifiable {
 }
 
 enum KanbanService {
-    private static let hiddenTagTitles: Set<String> = ["Дни рождения"]
-    private static let hiddenProjectTitles: Set<String> = ["Дни рождения"]
-
     static func columns(
         from tasks: [PlannerTask],
         searchText: String,
@@ -65,6 +62,19 @@ enum KanbanService {
         }
     }
 
+    static func shouldNormalize(previous: PlannerTask?, next: PlannerTask?) -> Bool {
+        guard let previous, let next else { return false }
+        return !previous.manualOrder.isFinite
+            || !next.manualOrder.isFinite
+            || abs(next.manualOrder - previous.manualOrder) < 0.001
+    }
+
+    static func normalize(_ tasks: [PlannerTask]) {
+        for (index, task) in tasks.sorted(by: compareManualOrderThenCreated).enumerated() {
+            task.manualOrder = Double(index + 1) * 1_000
+        }
+    }
+
     private static func compareManualOrderThenCreated(_ lhs: PlannerTask, _ rhs: PlannerTask) -> Bool {
         if lhs.manualOrder != rhs.manualOrder {
             return lhs.manualOrder < rhs.manualOrder
@@ -74,13 +84,6 @@ enum KanbanService {
     }
 
     private static func isHiddenFromKanban(_ task: PlannerTask) -> Bool {
-        if let projectTitle = task.project?.title.trimmingCharacters(in: .whitespacesAndNewlines),
-           hiddenProjectTitles.contains(projectTitle) {
-            return true
-        }
-
-        return task.tags.contains { tag in
-            hiddenTagTitles.contains(tag.title.trimmingCharacters(in: .whitespacesAndNewlines))
-        }
+        !task.showInKanban
     }
 }

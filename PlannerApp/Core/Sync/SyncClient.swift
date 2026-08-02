@@ -9,7 +9,7 @@ final class SyncClient {
     init(baseURL: URL, token: String, certificateFingerprint: String) {
         self.baseURL = baseURL
         self.token = token
-        self.session = URLSession(
+        session = URLSession(
             configuration: .ephemeral,
             delegate: PinnedCertificateDelegate(expectedFingerprint: certificateFingerprint),
             delegateQueue: nil
@@ -17,30 +17,23 @@ final class SyncClient {
     }
 
     func status() async throws -> SyncStatusResponse {
-        try await request(path: "/v1/sync/status", method: "GET", body: Optional<Data>.none)
+        try await request(path: "/v2/sync/status", method: "GET", body: Optional<Data>.none)
     }
 
-    func push(_ payload: SyncPushRequest) async throws -> SyncPushResponse {
-        try await request(path: "/v1/sync/push", method: "POST", body: encode(payload))
+    func initialize(_ payload: SyncMutationRequest) async throws -> SyncMutationResponse {
+        try await request(path: "/v2/sync/initialize", method: "POST", body: encode(payload))
     }
 
-    func bootstrap(_ payload: SyncPushRequest) async throws -> SyncPushResponse {
-        try await request(path: "/v1/sync/bootstrap", method: "POST", body: encode(payload))
+    func mutations(_ payload: SyncMutationRequest) async throws -> SyncMutationResponse {
+        try await request(path: "/v2/sync/mutations", method: "POST", body: encode(payload))
     }
 
-    func pull(cursor: Int64) async throws -> SyncPullResponse {
-        try await request(path: "/v1/sync/pull?cursor=\(cursor)", method: "GET", body: Optional<Data>.none)
+    func changes(after cursor: Int64, limit: Int = 200) async throws -> SyncChangesResponse {
+        try await request(path: "/v2/sync/changes?after=\(cursor)&limit=\(limit)", method: "GET", body: Optional<Data>.none)
     }
 
-    private func request<Response: Decodable>(
-        path: String,
-        method: String,
-        body: Data?
-    ) async throws -> Response {
-        guard let url = URL(string: path, relativeTo: baseURL) else {
-            throw SyncError.invalidServerURL
-        }
-
+    private func request<Response: Decodable>(path: String, method: String, body: Data?) async throws -> Response {
+        guard let url = URL(string: path, relativeTo: baseURL) else { throw SyncError.invalidServerURL }
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -52,40 +45,59 @@ final class SyncClient {
 
         let data: Data
         let response: URLResponse
-        do {
-            (data, response) = try await session.data(for: request)
-        } catch let error as URLError {
-            throw SyncError.network(error.localizedDescription)
-        } catch {
-            throw SyncError.network(error.localizedDescription)
-        }
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw SyncError.invalidResponse
-        }
-
-        guard (200..<300).contains(httpResponse.statusCode) else {
-            let message = String(data: data, encoding: .utf8) ?? "HTTP \(httpResponse.statusCode)"
+        do { (data, response) = try await session.data(for: request) }
+        catch { throw SyncError.network(error.localizedDescription) }
+        guard let http = response as? HTTPURLResponse else { throw SyncError.invalidResponse }
+        guard (200..<300).contains(http.statusCode) else {
+            let message = String(data: data, encoding: .utf8) ?? "HTTP \(http.statusCode)"
             throw SyncError.server(message)
         }
-
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        return try decoder.decode(Response.self, from: data)
+        return try Self.decoder.decode(Response.self, from: data)
     }
 
-    private func encode<T: Encodable>(_ value: T) throws -> Data {
+    private func encode<T: Encodable>(_ value: T) throws -> Data { try Self.encoder.encode(value) }
+
+    static var encoder: JSONEncoder {
         let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        return try encoder.encode(value)
+        encoder.outputFormatting = [.sortedKeys]
+        encoder.dateEncodingStrategy = .custom { date, encoder in
+            var container = encoder.singleValueContainer()
+            try container.encode(RFC3339.string(from: date))
+        }
+        return encoder
+    }
+
+    static var decoder: JSONDecoder {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .custom { decoder in
+            let container = try decoder.singleValueContainer()
+            let value = try container.decode(String.self)
+            guard let date = RFC3339.date(from: value) else {
+                throw DecodingError.dataCorruptedError(in: container, debugDescription: "Invalid RFC3339 date")
+            }
+            return date
+        }
+        return decoder
+    }
+}
+
+private enum RFC3339 {
+    static func string(from date: Date) -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter.string(from: date)
+    }
+
+    static func date(from string: String) -> Date? {
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return fractional.date(from: string) ?? ISO8601DateFormatter().date(from: string)
     }
 }
 
 final class PinnedCertificateDelegate: NSObject, URLSessionDelegate {
     private let expectedFingerprint: String
-
-    init(expectedFingerprint: String) {
-        self.expectedFingerprint = Self.normalized(expectedFingerprint)
-    }
+    init(expectedFingerprint: String) { self.expectedFingerprint = Self.normalized(expectedFingerprint) }
 
     func urlSession(
         _ session: URLSession,
@@ -96,16 +108,15 @@ final class PinnedCertificateDelegate: NSObject, URLSessionDelegate {
             challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
             let trust = challenge.protectionSpace.serverTrust,
             !expectedFingerprint.isEmpty,
-            let certificate = SecTrustGetCertificateAtIndex(trust, 0)
+            let chain = SecTrustCopyCertificateChain(trust) as? [SecCertificate],
+            let certificate = chain.first
         else {
             completionHandler(.cancelAuthenticationChallenge, nil)
             return
         }
 
-        let certificateData = SecCertificateCopyData(certificate) as Data
-        let digest = SHA256.hash(data: certificateData)
+        let digest = SHA256.hash(data: SecCertificateCopyData(certificate) as Data)
         let fingerprint = digest.map { String(format: "%02x", $0) }.joined()
-
         if Self.normalized(fingerprint) == expectedFingerprint {
             completionHandler(.useCredential, URLCredential(trust: trust))
         } else {
@@ -114,37 +125,27 @@ final class PinnedCertificateDelegate: NSObject, URLSessionDelegate {
     }
 
     private static func normalized(_ fingerprint: String) -> String {
-        fingerprint
-            .lowercased()
-            .filter { $0.isHexDigit }
+        fingerprint.lowercased().filter(\.isHexDigit)
     }
 }
 
 enum SyncError: LocalizedError {
-    case disabled
-    case invalidServerURL
-    case missingToken
-    case missingCertificateFingerprint
-    case invalidResponse
-    case network(String)
-    case server(String)
+    case disabled, invalidServerURL, missingToken, missingCertificateFingerprint, invalidResponse, protocolMismatch
+    case serverNotInitialized, syncInProgress
+    case network(String), server(String)
 
     var errorDescription: String? {
         switch self {
-        case .disabled:
-            "Синхронизация отключена."
-        case .invalidServerURL:
-            "Некорректный URL сервера синхронизации."
-        case .missingToken:
-            "Укажите API token для синхронизации."
-        case .missingCertificateFingerprint:
-            "Укажите SHA256 fingerprint сертификата сервера."
-        case .invalidResponse:
-            "Сервер синхронизации вернул некорректный ответ."
-        case .network(let message):
-            "Ошибка подключения к серверу синхронизации: \(message)"
-        case .server(let message):
-            "Ошибка сервера синхронизации: \(message)"
+        case .disabled: "Синхронизация отключена."
+        case .invalidServerURL: "Укажите корректный HTTPS URL сервера синхронизации."
+        case .missingToken: "Укажите API token для синхронизации."
+        case .missingCertificateFingerprint: "Укажите SHA256 fingerprint сертификата сервера."
+        case .invalidResponse: "Сервер синхронизации вернул некорректный ответ."
+        case .protocolMismatch: "Сервер не поддерживает протокол синхронизации v2."
+        case .serverNotInitialized: "Сервер пуст. Сначала выполните «Инициализировать пустой сервер»."
+        case .syncInProgress: "Другой сеанс синхронизации ещё выполняется. Повторите через несколько секунд."
+        case .network(let message): "Ошибка подключения к серверу синхронизации: \(message)"
+        case .server(let message): "Ошибка сервера синхронизации: \(message)"
         }
     }
 }
