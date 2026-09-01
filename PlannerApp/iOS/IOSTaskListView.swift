@@ -7,14 +7,14 @@ struct IOSTaskListView: View {
     let tasks: [PlannerTask]
     let sections: [UpcomingSection]
     let controls: AnyView?
-    let projects: [Project]
     @Binding var searchText: String
     let createTask: (String) -> Void
     let deleteTask: ((PlannerTask) -> Void)?
+    let openTask: (PlannerTask) -> Void
     let completeTask: (PlannerTask) -> Void
 
+    @EnvironmentObject private var voiceInputController: TaskVoiceInputController
     @State private var newTaskTitle = ""
-    @State private var selectedTask: PlannerTask?
 
     init(
         title: String,
@@ -22,10 +22,10 @@ struct IOSTaskListView: View {
         tasks: [PlannerTask],
         sections: [UpcomingSection] = [],
         controls: AnyView? = nil,
-        projects: [Project],
         searchText: Binding<String>,
         createTask: @escaping (String) -> Void,
         deleteTask: @escaping (PlannerTask) -> Void,
+        openTask: @escaping (PlannerTask) -> Void,
         completeTask: @escaping (PlannerTask) -> Void
     ) {
         self.title = title
@@ -33,10 +33,10 @@ struct IOSTaskListView: View {
         self.tasks = tasks
         self.sections = sections
         self.controls = controls
-        self.projects = projects
         self._searchText = searchText
         self.createTask = createTask
         self.deleteTask = deleteTask
+        self.openTask = openTask
         self.completeTask = completeTask
     }
 
@@ -45,9 +45,9 @@ struct IOSTaskListView: View {
         systemImage: String,
         sections: [UpcomingSection],
         controls: AnyView? = nil,
-        projects: [Project],
         searchText: Binding<String>,
         createTask: @escaping (String) -> Void,
+        openTask: @escaping (PlannerTask) -> Void,
         completeTask: @escaping (PlannerTask) -> Void
     ) {
         self.title = title
@@ -55,10 +55,10 @@ struct IOSTaskListView: View {
         self.tasks = []
         self.sections = sections
         self.controls = controls
-        self.projects = projects
         self._searchText = searchText
         self.createTask = createTask
         self.deleteTask = nil
+        self.openTask = openTask
         self.completeTask = completeTask
     }
 
@@ -78,7 +78,7 @@ struct IOSTaskListView: View {
                     ForEach(tasks) { task in
                         IOSTaskRow(
                             task: task,
-                            openTask: { selectedTask = task },
+                            openTask: { openTask(task) },
                             completeTask: completeTask
                         )
                     }
@@ -97,7 +97,7 @@ struct IOSTaskListView: View {
                     ForEach(section.tasks) { task in
                         IOSTaskRow(
                             task: task,
-                            openTask: { selectedTask = task },
+                            openTask: { openTask(task) },
                             completeTask: completeTask
                         )
                     }
@@ -119,18 +119,6 @@ struct IOSTaskListView: View {
                 .allowsHitTesting(false)
             }
         }
-        .sheet(item: $selectedTask) { task in
-            NavigationStack {
-                IOSTaskDetailView(
-                    task: task,
-                    projects: projects,
-                    deleteTask: { task in
-                        deleteTask?(task)
-                        selectedTask = nil
-                    }
-                )
-            }
-        }
     }
 
     private var quickAddSection: some View {
@@ -140,6 +128,8 @@ struct IOSTaskListView: View {
                     .textInputAutocapitalization(.sentences)
                     .submitLabel(.done)
                     .onSubmit(addTask)
+
+                TaskVoiceInputButton(fieldID: voiceFieldID, text: $newTaskTitle)
 
                 Button(action: addTask) {
                     Image(systemName: "plus.circle.fill")
@@ -170,6 +160,7 @@ struct IOSTaskListView: View {
     }
 
     private func addTask() {
+        voiceInputController.stop(ifActive: voiceFieldID)
         let title = newTaskTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty else {
             return
@@ -177,6 +168,10 @@ struct IOSTaskListView: View {
 
         createTask(title)
         newTaskTitle = ""
+    }
+
+    private var voiceFieldID: String {
+        "ios.list.\(title)"
     }
 }
 

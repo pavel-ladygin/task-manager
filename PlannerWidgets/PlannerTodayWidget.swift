@@ -111,11 +111,27 @@ private struct PlannerTodayProvider: AppIntentTimelineProvider {
             let snapshot = try await PlannerWidgetClient.fetch(token: token)
             PlannerWidgetClient.saveCachedSnapshot(snapshot)
             return (snapshot, .ready)
+        } catch let error as PlannerWidgetClientError {
+            if let cached = PlannerWidgetClient.loadCachedSnapshot() {
+                return (cached, .cached)
+            }
+            switch error {
+            case .missingToken:
+                return (nil, .needsConfiguration)
+            case .unauthorized:
+                return (nil, .unauthorized)
+            case .network:
+                return (nil, .networkUnavailable)
+            case .server:
+                return (nil, .serverError)
+            case .invalidResponse:
+                return (nil, .invalidResponse)
+            }
         } catch {
             if let cached = PlannerWidgetClient.loadCachedSnapshot() {
                 return (cached, .cached)
             }
-            return (nil, .unavailable)
+            return (nil, .networkUnavailable)
         }
     }
 
@@ -142,7 +158,34 @@ private enum PlannerTodayState: Equatable {
     case ready
     case cached
     case needsConfiguration
-    case unavailable
+    case unauthorized
+    case networkUnavailable
+    case serverError
+    case invalidResponse
+
+    var isUnavailable: Bool {
+        switch self {
+        case .unauthorized, .networkUnavailable, .serverError, .invalidResponse:
+            true
+        case .ready, .cached, .needsConfiguration:
+            false
+        }
+    }
+
+    var failureMessage: String {
+        switch self {
+        case .unauthorized:
+            "Read-only токен отклонён сервером"
+        case .networkUnavailable:
+            "Сервер недоступен или ошибка TLS"
+        case .serverError:
+            "Сервер вернул ошибку"
+        case .invalidResponse:
+            "Сервер вернул некорректные данные"
+        case .ready, .cached, .needsConfiguration:
+            ""
+        }
+    }
 }
 
 private struct PlannerTodayEntry: TimelineEntry {
@@ -176,7 +219,7 @@ private struct PlannerTodayWidgetView: View {
 
             if entry.state == .needsConfiguration {
                 configurationState
-            } else if entry.state == .unavailable {
+            } else if entry.state.isUnavailable {
                 unavailableState
             } else if entry.tasks.isEmpty {
                 emptyState
@@ -264,7 +307,7 @@ private struct PlannerTodayWidgetView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Не удалось загрузить задачи")
                     .font(.subheadline.weight(.semibold))
-                Text("Проверьте интернет и read-only токен")
+                Text(entry.state.failureMessage)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)

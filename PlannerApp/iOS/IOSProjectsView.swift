@@ -3,12 +3,11 @@ import SwiftUI
 #if os(iOS)
 struct IOSProjectsView: View {
     let projects: [Project]
-    let allProjects: [Project]
     let tasks: [PlannerTask]
     @Binding var searchText: String
     let createProject: (String) -> Void
     let deleteProject: (Project) -> Void
-    let deleteTask: (PlannerTask) -> Void
+    let openTask: (PlannerTask) -> Void
     let completeTask: (PlannerTask) -> Void
 
     @State private var newProjectTitle = ""
@@ -33,14 +32,13 @@ struct IOSProjectsView: View {
                     NavigationLink {
                         IOSProjectPageView(
                             project: project,
-                            projects: allProjects,
                             tasks: TaskListService.tasks(
                                 for: project,
                                 tasks: tasks,
                                 searchText: searchText
                             ),
                             progress: TaskListService.progress(for: project, tasks: tasks),
-                            deleteTask: deleteTask,
+                            openTask: openTask,
                             completeTask: completeTask
                         )
                     } label: {
@@ -96,13 +94,11 @@ struct IOSProjectsView: View {
 
 private struct IOSProjectPageView: View {
     let project: Project
-    let projects: [Project]
     let tasks: [PlannerTask]
     let progress: ProjectProgress
-    let deleteTask: (PlannerTask) -> Void
+    let openTask: (PlannerTask) -> Void
     let completeTask: (PlannerTask) -> Void
 
-    @State private var selectedTask: PlannerTask?
     @State private var isProjectEditorPresented = false
 
     private var activeTasks: [PlannerTask] {
@@ -143,7 +139,7 @@ private struct IOSProjectPageView: View {
                     ForEach(activeTasks) { task in
                         IOSProjectTaskRow(
                             task: task,
-                            openTask: { selectedTask = task },
+                            openTask: { openTask(task) },
                             completeTask: completeTask
                         )
                     }
@@ -158,7 +154,7 @@ private struct IOSProjectPageView: View {
                     ForEach(closedTasks) { task in
                         IOSProjectTaskRow(
                             task: task,
-                            openTask: { selectedTask = task },
+                            openTask: { openTask(task) },
                             completeTask: completeTask
                         )
                     }
@@ -174,18 +170,6 @@ private struct IOSProjectPageView: View {
                 Button { isProjectEditorPresented = true } label: {
                     Label("Редактировать", systemImage: "pencil")
                 }
-            }
-        }
-        .sheet(item: $selectedTask) { task in
-            NavigationStack {
-                IOSTaskDetailView(
-                    task: task,
-                    projects: projects,
-                    deleteTask: { task in
-                        deleteTask(task)
-                        selectedTask = nil
-                    }
-                )
             }
         }
         .sheet(isPresented: $isProjectEditorPresented) {

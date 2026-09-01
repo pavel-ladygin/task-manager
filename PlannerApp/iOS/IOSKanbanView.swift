@@ -8,10 +8,9 @@ struct IOSKanbanView: View {
     @Binding var searchText: String
     let createTask: (String, TaskStatus) -> Void
     let moveTask: (PlannerTask, TaskStatus, PlannerTask?, PlannerTask?) -> Void
-    let deleteTask: (PlannerTask) -> Void
+    let openTask: (PlannerTask) -> Void
     let completeTask: (PlannerTask) -> Void
 
-    @State private var selectedTask: PlannerTask?
     @State private var selectedProjectID: UUID?
     @State private var selectedPriority: Priority?
 
@@ -26,9 +25,9 @@ struct IOSKanbanView: View {
                     IOSKanbanColumnView(
                         column: column,
                         allColumns: filteredColumns,
-                        selectedTask: $selectedTask,
                         createTask: createTask,
                         moveTask: moveTask,
+                        openTask: openTask,
                         completeTask: completeTask
                     )
                     .frame(width: 292)
@@ -72,18 +71,6 @@ struct IOSKanbanView: View {
                 .allowsHitTesting(false)
             }
         }
-        .sheet(item: $selectedTask) { task in
-            NavigationStack {
-                IOSTaskDetailView(
-                    task: task,
-                    projects: projects,
-                    deleteTask: { task in
-                        deleteTask(task)
-                        selectedTask = nil
-                    }
-                )
-            }
-        }
     }
 
     private var filteredColumns: [KanbanColumn] {
@@ -103,10 +90,11 @@ struct IOSKanbanView: View {
 private struct IOSKanbanColumnView: View {
     let column: KanbanColumn
     let allColumns: [KanbanColumn]
-    @Binding var selectedTask: PlannerTask?
     let createTask: (String, TaskStatus) -> Void
     let moveTask: (PlannerTask, TaskStatus, PlannerTask?, PlannerTask?) -> Void
+    let openTask: (PlannerTask) -> Void
     let completeTask: (PlannerTask) -> Void
+    @EnvironmentObject private var voiceInputController: TaskVoiceInputController
     @State private var quickTitle = ""
     @State private var targetedTaskID: UUID?
 
@@ -133,22 +121,27 @@ private struct IOSKanbanColumnView: View {
                     }
                     IOSKanbanCardView(
                         task: task,
-                        openTask: { selectedTask = task },
+                        openTask: { openTask(task) },
                         completeTask: completeTask
                     )
-                    .dropDestination(for: String.self) { ids, _ in
-                        guard let rawID = ids.first, let dropped = self.task(for: rawID), dropped.id != task.id else {
-                            return false
+                    .onDrop(
+                        of: [.plainText],
+                        isTargeted: Binding(
+                            get: { targetedTaskID == task.id },
+                            set: { targetedTaskID = $0 ? task.id : nil }
+                        )
+                    ) { providers in
+                        loadTask(from: providers) { dropped in
+                            guard dropped.id != task.id else { return }
+                            let withoutDropped = column.tasks.filter { $0.id != dropped.id }
+                            let targetIndex = withoutDropped.firstIndex { $0.id == task.id }
+                                ?? min(index, withoutDropped.count)
+                            let previous = targetIndex > 0 ? withoutDropped[targetIndex - 1] : nil
+                            let next = targetIndex < withoutDropped.count ? withoutDropped[targetIndex] : nil
+                            moveTask(dropped, column.status, previous, next)
+                            targetedTaskID = nil
                         }
-                        let withoutDropped = column.tasks.filter { $0.id != dropped.id }
-                        let targetIndex = withoutDropped.firstIndex { $0.id == task.id } ?? min(index, withoutDropped.count)
-                        let previous = targetIndex > 0 ? withoutDropped[targetIndex - 1] : nil
-                        let next = targetIndex < withoutDropped.count ? withoutDropped[targetIndex] : nil
-                        moveTask(dropped, column.status, previous, next)
-                        targetedTaskID = nil
                         return true
-                    } isTargeted: { targeted in
-                        targetedTaskID = targeted ? task.id : nil
                     }
                     .contextMenu {
                         if index > 0 {
@@ -185,6 +178,7 @@ private struct IOSKanbanColumnView: View {
 
                 HStack {
                     TextField("Новая задача", text: $quickTitle).onSubmit(addTask)
+                    TaskVoiceInputButton(fieldID: voiceFieldID, text: $quickTitle)
                     Button(action: addTask) { Image(systemName: "plus.circle.fill") }
                         .disabled(quickTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
@@ -194,22 +188,6 @@ private struct IOSKanbanColumnView: View {
         }
         .padding(12)
         .contentShape(Rectangle())
-        .dropDestination(for: String.self) { taskIDs, _ in
-            guard
-                let rawID = taskIDs.first,
-                let droppedTask = task(for: rawID)
-            else {
-                return false
-            }
-
-            moveTask(
-                droppedTask,
-                column.status,
-                lastTask(excluding: droppedTask),
-                nil
-            )
-            return true
-        }
         .onDrop(of: [.plainText], isTargeted: nil) { providers in
             loadTask(from: providers) { droppedTask in
                 moveTask(
@@ -230,22 +208,19 @@ private struct IOSKanbanColumnView: View {
     }
 
     private func addTask() {
+        voiceInputController.stop(ifActive: voiceFieldID)
         let title = quickTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty else { return }
         createTask(title, column.status)
         quickTitle = ""
     }
 
-    private func lastTask(excluding task: PlannerTask) -> PlannerTask? {
-        column.tasks.filter { $0.id != task.id }.last
+    private var voiceFieldID: String {
+        "ios.kanban.\(column.status.rawValue)"
     }
 
-    private func task(for rawID: String) -> PlannerTask? {
-        guard let taskID = UUID(uuidString: rawID) else {
-            return nil
-        }
-
-        return allColumns.flatMap(\.tasks).first { $0.id == taskID }
+    private func lastTask(excluding task: PlannerTask) -> PlannerTask? {
+        column.tasks.filter { $0.id != task.id }.last
     }
 
     private func loadTask(
@@ -279,6 +254,7 @@ private struct IOSKanbanCardView: View {
     let task: PlannerTask
     let openTask: () -> Void
     let completeTask: (PlannerTask) -> Void
+    @State private var suppressOpenUntil = Date.distantPast
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -292,7 +268,10 @@ private struct IOSKanbanCardView: View {
             .buttonStyle(.plain)
             .disabled(task.status == .done)
 
-            Button(action: openTask) {
+            Button {
+                guard Date.now >= suppressOpenUntil else { return }
+                openTask()
+            } label: {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(task.title)
                         .font(.body)
@@ -336,9 +315,9 @@ private struct IOSKanbanCardView: View {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(borderColor, lineWidth: 0.5)
         )
-        .draggable(task.id.uuidString)
         .onDrag {
-            NSItemProvider(object: task.id.uuidString as NSString)
+            suppressOpenUntil = Date.now.addingTimeInterval(3)
+            return NSItemProvider(object: task.id.uuidString as NSString)
         }
     }
 

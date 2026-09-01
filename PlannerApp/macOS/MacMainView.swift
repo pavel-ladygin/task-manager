@@ -114,6 +114,7 @@ struct MacMainView: View {
     @State private var newTaskTitle = ""
     @State private var newProjectTitle = ""
     @State private var selectedCalendarDate = Date.now
+    @State private var isSidebarVisible = true
     @State private var isInspectorVisible = true
     @State private var errorMessage: String?
     @State private var statusMessage: String?
@@ -122,9 +123,24 @@ struct MacMainView: View {
     @State private var syncStatus = "Не синхронизировано"
     @State private var autoSyncTask: Swift.Task<Void, Never>?
     @State private var isAutoSyncing = false
+    @State private var taskEditorSession: TaskEditorSession?
+    @StateObject private var voiceInputController = TaskVoiceInputController()
 
     private var selectedTask: PlannerTask? {
-        tasks.first { $0.id == selectedTaskID }
+        taskEditorSession?.task
+    }
+
+    private var taskSelectionBinding: Binding<UUID?> {
+        Binding(
+            get: { selectedTaskID },
+            set: { requestedID in
+                if let requestedID, let task = tasks.first(where: { $0.id == requestedID }) {
+                    openTaskEditor(task)
+                } else {
+                    saveAndCloseTaskEditor()
+                }
+            }
+        )
     }
 
     private var selectedProject: Project? {
@@ -136,6 +152,18 @@ struct MacMainView: View {
             .frame(minWidth: 1060, minHeight: 680)
             .background(PlannerTheme.windowBackground)
             .tint(PlannerTheme.accent)
+            .environmentObject(voiceInputController)
+            .toolbar {
+                MacToolbar(
+                    searchText: $searchText,
+                    newTaskTitle: $newTaskTitle,
+                    isSidebarVisible: $isSidebarVisible,
+                    isInspectorVisible: $isInspectorVisible,
+                    focusedField: $focusedField,
+                    voiceInputController: voiceInputController,
+                    createTask: createTask
+                )
+            }
             .preferredColorScheme(currentSettings?.appTheme.colorScheme)
             .focusedSceneValue(\.plannerCommandActions, commandActions)
             .alert("Ошибка планировщика", isPresented: errorBinding) {
@@ -153,6 +181,7 @@ struct MacMainView: View {
                 Text(statusMessage ?? "")
             }
             .onChange(of: selectedSection) { _, newSection in
+                saveAndCloseTaskEditor()
                 if newSection != .projects {
                     selectedProjectID = nil
                 }
@@ -166,7 +195,7 @@ struct MacMainView: View {
             }
             .onChange(of: selectedProjectID) { _, newProjectID in
                 if activeSection == .projects, newProjectID != nil {
-                    selectedTaskID = nil
+                    saveAndCloseTaskEditor()
                 }
             }
             .onAppear {
@@ -186,6 +215,7 @@ struct MacMainView: View {
                 }
             }
             .onChange(of: taskSyncSignature) { _, _ in
+                taskEditorSession?.refreshIfClean()
                 scheduleAutoSync(reason: "Изменения задач")
             }
             .onChange(of: projectSyncSignature) { _, _ in
@@ -195,22 +225,37 @@ struct MacMainView: View {
 
     @ViewBuilder
     private var rootLayout: some View {
-        if isInspectorVisible {
-            NavigationSplitView {
+        HSplitView {
+            if isSidebarVisible {
                 MacSidebar(selectedSection: $selectedSection)
-            } content: {
-                contentPanel
-            } detail: {
-                inspectorPanel
-                    .navigationSplitViewColumnWidth(min: 280, ideal: 340, max: 440)
+                    .frame(
+                        minWidth: 220,
+                        idealWidth: 260,
+                        maxWidth: 340,
+                        maxHeight: .infinity,
+                        alignment: .topLeading
+                    )
             }
-        } else {
-            NavigationSplitView {
-                MacSidebar(selectedSection: $selectedSection)
-            } detail: {
+
+            NavigationStack {
                 contentPanel
+            }
+            .frame(minWidth: 500, maxWidth: .infinity, maxHeight: .infinity)
+
+            if isInspectorVisible {
+                NavigationStack {
+                    inspectorPanel
+                }
+                .frame(
+                    minWidth: 280,
+                    idealWidth: 340,
+                    maxWidth: 440,
+                    maxHeight: .infinity,
+                    alignment: .topLeading
+                )
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private var contentPanel: some View {
@@ -229,7 +274,7 @@ struct MacMainView: View {
             selectedProject: selectedProject,
             selectedProjectProgress: selectedProjectProgress,
             settings: currentSettings,
-            selectedTaskID: $selectedTaskID,
+            selectedTaskID: taskSelectionBinding,
             selectedProjectID: $selectedProjectID,
             newProjectTitle: $newProjectTitle,
             createProject: createProject,
@@ -241,6 +286,7 @@ struct MacMainView: View {
             rescheduleTask: rescheduleTask,
             setTaskDue: setTaskDue,
             openTaskInspector: openTaskInspector,
+            closeTaskEditor: saveAndCloseTaskEditor,
             goToPreviousCalendarWeek: { moveSelectedCalendarWeek(by: -1) },
             goToNextCalendarWeek: { moveSelectedCalendarWeek(by: 1) },
             goToCurrentCalendarWeek: goToCurrentCalendarWeek,
@@ -263,22 +309,19 @@ struct MacMainView: View {
             exportBackup: exportBackup,
             importBackup: importBackup
         )
-        .toolbar {
-            MacToolbar(
-                searchText: $searchText,
-                newTaskTitle: $newTaskTitle,
-                isInspectorVisible: $isInspectorVisible,
-                focusedField: $focusedField,
-                createTask: createTask
-            )
-        }
         .background(PlannerTheme.windowBackground)
     }
 
     @ViewBuilder
     private var inspectorPanel: some View {
-        if let selectedTask {
-            TaskDetailView(task: selectedTask, projects: projects, deleteTask: deleteTask)
+        if let taskEditorSession {
+            TaskDetailView(
+                session: taskEditorSession,
+                projects: projects,
+                saveAndClose: saveAndCloseTaskEditor,
+                discardAndClose: discardAndCloseTaskEditor,
+                deleteTask: deleteTask
+            )
         } else if activeSection == .projects, let selectedProject {
             ProjectDetailView(project: selectedProject)
         } else {
@@ -422,6 +465,8 @@ struct MacMainView: View {
     }
 
     private func createTask() {
+        voiceInputController.stop()
+        guard commitAndCloseTaskEditor() else { return }
         do {
             let task = try PlannerDataService.createTask(
                 title: newTaskTitle,
@@ -429,9 +474,11 @@ struct MacMainView: View {
                 status: .inbox
             )
             newTaskTitle = ""
-            selectedTaskID = task.id
             selectedSection = .inbox
             isInspectorVisible = true
+            DispatchQueue.main.async {
+                openTaskEditor(task)
+            }
             scheduleAutoSync(reason: "Создана задача")
         } catch {
             errorMessage = error.localizedDescription
@@ -439,6 +486,7 @@ struct MacMainView: View {
     }
 
     private func createProject() {
+        guard commitAndCloseTaskEditor() else { return }
         do {
             let project = try PlannerDataService.createProject(
                 title: newProjectTitle,
@@ -446,7 +494,6 @@ struct MacMainView: View {
             )
             newProjectTitle = ""
             selectedProjectID = project.id
-            selectedTaskID = nil
             isInspectorVisible = true
             scheduleAutoSync(reason: "Создан проект")
         } catch {
@@ -455,12 +502,14 @@ struct MacMainView: View {
     }
 
     private func createKanbanTask(_ title: String, status: TaskStatus) {
+        voiceInputController.stop()
+        guard commitAndCloseTaskEditor() else { return }
         do {
             let columnTasks = tasks.filter { $0.status == status && $0.showInKanban }
             let task = try PlannerDataService.createTask(title: title, context: modelContext, status: status)
             task.manualOrder = KanbanService.nextManualOrder(in: columnTasks)
             try PlannerDataService.markTaskUpdated(task, context: modelContext)
-            selectedTaskID = task.id
+            openTaskEditor(task)
         } catch { errorMessage = error.localizedDescription }
     }
 
@@ -469,6 +518,7 @@ struct MacMainView: View {
             try PlannerDataService.deleteTask(task, context: modelContext)
             if selectedTaskID == task.id {
                 selectedTaskID = nil
+                taskEditorSession = nil
             }
             scheduleAutoSync(reason: "Удалена задача")
         } catch {
@@ -483,6 +533,7 @@ struct MacMainView: View {
 
             if shouldClearSelectedTask {
                 selectedTaskID = nil
+                taskEditorSession = nil
             }
 
             statusMessage = deletedCount == 0
@@ -509,9 +560,71 @@ struct MacMainView: View {
         }
     }
 
-    private func openTaskInspector(_ taskID: UUID) {
-        selectedTaskID = taskID
+    private func openTaskEditor(_ task: PlannerTask) {
+        voiceInputController.stop()
         isInspectorVisible = true
+
+        if let taskEditorSession {
+            guard taskEditorSession.saveAndSwitch(
+                to: task,
+                projects: projects,
+                context: modelContext
+            ) else {
+                selectedTaskID = taskEditorSession.task.id
+                return
+            }
+        } else {
+            taskEditorSession = TaskEditorSession.open(task)
+        }
+        selectedTaskID = task.id
+    }
+
+    @discardableResult
+    private func commitAndCloseTaskEditor() -> Bool {
+        guard let taskEditorSession else {
+            selectedTaskID = nil
+            return true
+        }
+
+        return taskEditorSession.saveAndClose(projects: projects, context: modelContext) {
+            self.taskEditorSession = nil
+            selectedTaskID = nil
+            scheduleAutoSync(reason: "Изменена задача")
+        }
+    }
+
+    private func saveAndCloseTaskEditor() {
+        _ = commitAndCloseTaskEditor()
+    }
+
+    private func discardAndCloseTaskEditor() {
+        guard let taskEditorSession else { return }
+        taskEditorSession.discardAndClose {
+            self.taskEditorSession = nil
+            selectedTaskID = nil
+        }
+    }
+
+    private func prepareForExternalMutation(of task: PlannerTask) -> Bool {
+        guard let taskEditorSession, taskEditorSession.task.id == task.id else {
+            return true
+        }
+        return taskEditorSession.save(projects: projects, context: modelContext)
+    }
+
+    private func showMutatedTask(_ task: PlannerTask) {
+        if let taskEditorSession {
+            taskEditorSession.open(task)
+        } else {
+            self.taskEditorSession = TaskEditorSession.open(task)
+        }
+        selectedTaskID = task.id
+        isInspectorVisible = true
+    }
+
+    private func openTaskInspector(_ taskID: UUID) {
+        guard let task = tasks.first(where: { $0.id == taskID }) else { return }
+        openTaskEditor(task)
     }
 
     private func completeTask(_ task: PlannerTask) {
@@ -519,13 +632,14 @@ struct MacMainView: View {
             return
         }
 
+        guard prepareForExternalMutation(of: task) else { return }
         do {
             try PlannerDataService.setTaskStatus(
                 task,
                 status: .done,
                 context: modelContext
             )
-            selectedTaskID = task.id
+            showMutatedTask(task)
             scheduleAutoSync(reason: "Задача выполнена")
         } catch {
             errorMessage = error.localizedDescription
@@ -538,6 +652,7 @@ struct MacMainView: View {
         after previousTask: PlannerTask?,
         before nextTask: PlannerTask?
     ) {
+        guard prepareForExternalMutation(of: task) else { return }
         do {
             try PlannerDataService.moveTask(
                 task,
@@ -546,7 +661,7 @@ struct MacMainView: View {
                 before: nextTask,
                 context: modelContext
             )
-            selectedTaskID = task.id
+            showMutatedTask(task)
             isInspectorVisible = true
             scheduleAutoSync(reason: "Задача перемещена")
         } catch {
@@ -555,13 +670,14 @@ struct MacMainView: View {
     }
 
     private func rescheduleTask(_ task: PlannerTask, to scheduled: Date) {
+        guard prepareForExternalMutation(of: task) else { return }
         do {
             try PlannerDataService.rescheduleTask(
                 task,
                 to: scheduled,
                 context: modelContext
             )
-            selectedTaskID = task.id
+            showMutatedTask(task)
             isInspectorVisible = true
             scheduleAutoSync(reason: "Задача перенесена")
         } catch {
@@ -570,13 +686,14 @@ struct MacMainView: View {
     }
 
     private func setTaskDue(_ task: PlannerTask, to due: Date) {
+        guard prepareForExternalMutation(of: task) else { return }
         do {
             try PlannerDataService.setTaskDue(
                 task,
                 to: due,
                 context: modelContext
             )
-            selectedTaskID = task.id
+            showMutatedTask(task)
             isInspectorVisible = true
             scheduleAutoSync(reason: "Изменен срок")
         } catch {
@@ -743,6 +860,7 @@ struct MacMainView: View {
             let data = try Data(contentsOf: url)
             try BackupService.importData(data, context: modelContext)
             selectedTaskID = nil
+            taskEditorSession = nil
             selectedProjectID = nil
             statusMessage = "JSON-резервная копия импортирована из \(url.lastPathComponent)."
             scheduleAutoSync(reason: "Импортирована резервная копия")
@@ -752,6 +870,7 @@ struct MacMainView: View {
     }
 
     private func focusQuickAdd() {
+        guard commitAndCloseTaskEditor() else { return }
         selectedSection = .inbox
         isInspectorVisible = true
         focusedField = .quickAdd
@@ -762,6 +881,7 @@ struct MacMainView: View {
     }
 
     private func focusSearch() {
+        guard commitAndCloseTaskEditor() else { return }
         focusedField = .search
 
         DispatchQueue.main.async {
@@ -770,6 +890,9 @@ struct MacMainView: View {
     }
 
     private func toggleInspector() {
+        if isInspectorVisible, !commitAndCloseTaskEditor() {
+            return
+        }
         isInspectorVisible.toggle()
     }
 
@@ -778,12 +901,14 @@ struct MacMainView: View {
             return
         }
 
+        guard prepareForExternalMutation(of: selectedTask) else { return }
         do {
             try PlannerDataService.setTaskStatus(
                 selectedTask,
                 status: .done,
                 context: modelContext
             )
+            showMutatedTask(selectedTask)
             scheduleAutoSync(reason: "Задача выполнена")
         } catch {
             errorMessage = error.localizedDescription
@@ -904,57 +1029,97 @@ private struct MacSidebar: View {
                 sidebarRow(.settings)
             }
         }
-        .navigationTitle("Планировщик")
         .scrollContentBackground(.hidden)
         .background(PlannerTheme.sidebarBackground)
         .tint(PlannerTheme.accent)
     }
 
     private func sidebarRow(_ section: MacSidebarSection) -> some View {
-        Label(section.title, systemImage: section.systemImage)
-            .tag(section)
+        HStack(spacing: 7) {
+            Image(systemName: section.systemImage)
+            Text(section.title)
+        }
+        .font(.system(size: 13, weight: .medium))
+        .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
+        .contentShape(Rectangle())
+        .tag(section)
     }
 }
 
 private struct MacToolbar: ToolbarContent {
     @Binding var searchText: String
     @Binding var newTaskTitle: String
+    @Binding var isSidebarVisible: Bool
     @Binding var isInspectorVisible: Bool
     var focusedField: FocusState<MacFocusedField?>.Binding
+    let voiceInputController: TaskVoiceInputController
     let createTask: () -> Void
 
     var body: some ToolbarContent {
+        ToolbarItem(placement: .navigation) {
+            Button {
+                isSidebarVisible.toggle()
+            } label: {
+                Image(systemName: "sidebar.left")
+            }
+            .help("Показать/скрыть боковую панель")
+            .accessibilityLabel("Показать или скрыть боковую панель")
+        }
+
         ToolbarItemGroup(placement: .principal) {
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(PlannerTheme.secondaryText)
+                    .accessibilityHidden(true)
 
                 TextField("Поиск", text: $searchText)
                     .textFieldStyle(.plain)
-                    .frame(width: 220)
                     .focused(focusedField, equals: .search)
+                    .accessibilityLabel("Поиск по задачам")
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(PlannerTheme.elevatedBackground, in: RoundedRectangle(cornerRadius: 8))
-            .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(PlannerTheme.subtleBorder, lineWidth: 0.5)
-            )
+            .padding(.leading, 8)
+            .frame(width: 250, height: 28)
         }
 
         ToolbarItemGroup(placement: .primaryAction) {
-            TextField("Быстро добавить", text: $newTaskTitle)
-                .textFieldStyle(.roundedBorder)
-                .frame(width: 220)
-                .focused(focusedField, equals: .quickAdd)
-                .onSubmit(createTask)
+            HStack(spacing: 6) {
+                TextField("Быстро добавить", text: $newTaskTitle)
+                    .textFieldStyle(.plain)
+                    .focused(focusedField, equals: .quickAdd)
+                    .onSubmit(createTask)
+
+                TaskVoiceInputButton(
+                    fieldID: "mac.quick-add",
+                    text: $newTaskTitle,
+                    label: "Надиктовать название задачи",
+                    presentation: .toolbar
+                )
+                .environmentObject(voiceInputController)
+            }
+            .padding(.leading, 10)
+            .padding(.trailing, 5)
+            .padding(.vertical, 5)
+            .frame(width: 250)
+            .background(PlannerTheme.elevatedBackground, in: RoundedRectangle(cornerRadius: 8))
+            .overlay {
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(PlannerTheme.subtleBorder, lineWidth: 0.75)
+            }
 
             Button(action: createTask) {
-                Label("Добавить задачу", systemImage: "plus")
+                Image(systemName: "plus")
+                    .font(.system(size: 14, weight: .medium))
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(
+                GlassHoverIconButtonStyle(
+                    size: 32,
+                    isProminent: true,
+                    isEnabled: !newTaskTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                )
+            )
             .disabled(newTaskTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .help("Добавить задачу")
+            .accessibilityLabel("Добавить задачу")
 
             Button {
                 isInspectorVisible.toggle()
@@ -992,6 +1157,7 @@ private struct MacContentView: View {
     let rescheduleTask: (PlannerTask, Date) -> Void
     let setTaskDue: (PlannerTask, Date) -> Void
     let openTaskInspector: (UUID) -> Void
+    let closeTaskEditor: () -> Void
     let goToPreviousCalendarWeek: () -> Void
     let goToNextCalendarWeek: () -> Void
     let goToCurrentCalendarWeek: () -> Void
@@ -1074,6 +1240,7 @@ private struct MacContentView: View {
             }
         }
         .navigationTitle(section.title)
+        .onTapGesture(perform: closeTaskEditor)
     }
 
     private func taskList(tasks: [PlannerTask]) -> some View {
@@ -1458,7 +1625,7 @@ private struct TaskListRow: View {
             Spacer()
         }
         .padding(.horizontal, 8)
-        .padding(.vertical, 7)
+        .padding(.vertical, 12)
         .background(
             rowBackground,
             in: RoundedRectangle(cornerRadius: 8)
@@ -1572,6 +1739,7 @@ private struct KanbanBoardView: View {
 }
 
 private struct KanbanColumnView: View {
+    @EnvironmentObject private var voiceInputController: TaskVoiceInputController
     let column: KanbanColumn
     let allColumns: [KanbanColumn]
     let minHeight: CGFloat
@@ -1647,6 +1815,11 @@ private struct KanbanColumnView: View {
 
                 HStack {
                     TextField("Новая задача", text: $quickTitle).textFieldStyle(.roundedBorder).onSubmit(addTask)
+                    TaskVoiceInputButton(
+                        fieldID: "mac.kanban.\(column.status.rawValue)",
+                        text: $quickTitle,
+                        label: "Надиктовать название задачи"
+                    )
                     Button(action: addTask) { Image(systemName: "plus") }
                         .disabled(quickTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
@@ -1676,6 +1849,7 @@ private struct KanbanColumnView: View {
     }
 
     private func addTask() {
+        voiceInputController.stop()
         let title = quickTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty else { return }
         createTask(title, column.status)

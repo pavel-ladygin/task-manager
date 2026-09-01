@@ -123,6 +123,149 @@ final class PlannerCoreTests: XCTestCase {
         }
     }
 
+    @MainActor
+    func testEditorSessionSavesDirtyDraftOnceAndCloses() throws {
+        let container = try inMemoryContainer()
+        let context = container.mainContext
+        let task = PlannerTask(title: "Original")
+        context.insert(task)
+        try context.save()
+        let session = TaskEditorSession.open(task)
+        session.draft.title = "Changed"
+        var didClose = false
+
+        XCTAssertTrue(session.saveAndClose(projects: [], context: context) { didClose = true })
+        XCTAssertTrue(didClose)
+        XCTAssertEqual(task.title, "Changed")
+        XCTAssertEqual(try context.fetch(FetchDescriptor<SyncOutboxItem>()).count, 1)
+    }
+
+    @MainActor
+    func testCleanEditorSessionClosesWithoutMutation() throws {
+        let container = try inMemoryContainer()
+        let context = container.mainContext
+        let task = PlannerTask(title: "Clean")
+        context.insert(task)
+        try context.save()
+        let session = TaskEditorSession.open(task)
+        var didClose = false
+
+        XCTAssertTrue(session.saveAndClose(projects: [], context: context) { didClose = true })
+        XCTAssertTrue(didClose)
+        XCTAssertTrue(try context.fetch(FetchDescriptor<SyncOutboxItem>()).isEmpty)
+    }
+
+    @MainActor
+    func testInvalidAndStaleEditorDraftsStayOpen() throws {
+        let container = try inMemoryContainer()
+        let context = container.mainContext
+        let task = PlannerTask(title: "Original")
+        context.insert(task)
+        try context.save()
+        let session = TaskEditorSession.open(task)
+        session.draft.title = "   "
+        var didClose = false
+
+        XCTAssertFalse(session.saveAndClose(projects: [], context: context) { didClose = true })
+        XCTAssertFalse(didClose)
+        XCTAssertNotNil(session.errorMessage)
+
+        session.draft.title = "Changed"
+        task.updatedAt = task.updatedAt.addingTimeInterval(1)
+        XCTAssertFalse(session.saveAndClose(projects: [], context: context) { didClose = true })
+        XCTAssertFalse(didClose)
+        XCTAssertEqual(session.errorMessage, PlannerDataError.staleDraft.errorDescription)
+    }
+
+    @MainActor
+    func testEditorSessionSavesBeforeSwitchingTasks() throws {
+        let container = try inMemoryContainer()
+        let context = container.mainContext
+        let first = PlannerTask(title: "First")
+        let second = PlannerTask(title: "Second")
+        context.insert(first)
+        context.insert(second)
+        try context.save()
+        let session = TaskEditorSession.open(first)
+        session.draft.title = "First edited"
+
+        XCTAssertTrue(session.saveAndSwitch(to: second, projects: [], context: context))
+        XCTAssertEqual(first.title, "First edited")
+        XCTAssertEqual(session.task.id, second.id)
+        XCTAssertEqual(session.draft.title, "Second")
+        XCTAssertEqual(try context.fetch(FetchDescriptor<SyncOutboxItem>()).count, 1)
+    }
+
+    @MainActor
+    func testEditorSessionDiscardClosesWithoutChangingTask() throws {
+        let container = try inMemoryContainer()
+        let context = container.mainContext
+        let task = PlannerTask(title: "Original")
+        context.insert(task)
+        try context.save()
+        let session = TaskEditorSession.open(task)
+        session.draft.title = "Discarded"
+        var didClose = false
+
+        session.discardAndClose { didClose = true }
+        XCTAssertTrue(didClose)
+        XCTAssertEqual(task.title, "Original")
+        XCTAssertTrue(try context.fetch(FetchDescriptor<SyncOutboxItem>()).isEmpty)
+    }
+
+    @MainActor
+    func testVoiceControllerAppendsPartialAndFinalResults() async {
+        let provider = FakeTaskSpeechInputProvider()
+        let controller = TaskVoiceInputController(provider: provider)
+        var text = "Купить"
+        controller.toggle(fieldID: "one", currentText: text) { text = $0 }
+        await Task.yield()
+
+        provider.emit("молоко", isFinal: false)
+        await Task.yield()
+        XCTAssertEqual(text, "Купить молоко")
+        XCTAssertEqual(controller.state, .listening)
+
+        provider.emit("молоко и хлеб", isFinal: true)
+        await Task.yield()
+        XCTAssertEqual(text, "Купить молоко и хлеб")
+        XCTAssertEqual(controller.state, .idle)
+        XCTAssertNil(controller.activeFieldID)
+    }
+
+    @MainActor
+    func testVoiceControllerPermissionFailurePreservesText() async {
+        let provider = FakeTaskSpeechInputProvider()
+        provider.authorization = .failure(.microphonePermissionDenied)
+        let controller = TaskVoiceInputController(provider: provider)
+        var text = "Сохранить меня"
+        controller.toggle(fieldID: "one", currentText: text) { text = $0 }
+        await Task.yield()
+        await Task.yield()
+
+        XCTAssertEqual(text, "Сохранить меня")
+        if case .failed = controller.state {
+            // Expected.
+        } else {
+            XCTFail("Expected failed voice input state")
+        }
+    }
+
+    @MainActor
+    func testVoiceControllerStopsPreviousField() async {
+        let provider = FakeTaskSpeechInputProvider()
+        let controller = TaskVoiceInputController(provider: provider)
+        controller.toggle(fieldID: "one", currentText: "") { _ in }
+        await Task.yield()
+        let stopsBeforeSwitch = provider.stopCount
+
+        controller.toggle(fieldID: "two", currentText: "") { _ in }
+        await Task.yield()
+
+        XCTAssertGreaterThan(provider.stopCount, stopsBeforeSwitch)
+        XCTAssertEqual(controller.activeFieldID, "two")
+    }
+
     func testOverlapLayoutUsesSeparateLanes() {
         let task1 = PlannerTask(title: "A")
         let task2 = PlannerTask(title: "B")
@@ -230,5 +373,39 @@ final class PlannerCoreTests: XCTestCase {
             projectTitle: nil,
             projectColorRawValue: nil
         )
+    }
+}
+
+@MainActor
+private final class FakeTaskSpeechInputProvider: TaskSpeechInputProviding {
+    var authorization: Result<Void, TaskVoiceInputError> = .success(())
+    private(set) var stopCount = 0
+    private var onResult: ((String, Bool) -> Void)?
+    private var onFailure: ((TaskVoiceInputError) -> Void)?
+
+    func requestAuthorization() async -> Result<Void, TaskVoiceInputError> {
+        authorization
+    }
+
+    func start(
+        locale: Locale,
+        onResult: @escaping (String, Bool) -> Void,
+        onFailure: @escaping (TaskVoiceInputError) -> Void
+    ) throws {
+        XCTAssertEqual(locale.identifier, "ru-RU")
+        self.onResult = onResult
+        self.onFailure = onFailure
+    }
+
+    func stop() {
+        stopCount += 1
+    }
+
+    func emit(_ text: String, isFinal: Bool) {
+        onResult?(text, isFinal)
+    }
+
+    func fail(_ error: TaskVoiceInputError) {
+        onFailure?(error)
     }
 }

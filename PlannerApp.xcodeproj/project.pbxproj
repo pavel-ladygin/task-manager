@@ -43,6 +43,8 @@
 		100000000000000000000128 /* KeychainService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000028 /* KeychainService.swift */; };
 		100000000000000000000129 /* AutoSyncService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000029 /* AutoSyncService.swift */; };
 		10000000000000000000012A /* ProjectColorPreset.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000002A /* ProjectColorPreset.swift */; };
+		10000000000000000000012B /* TaskEditorSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000002B /* TaskEditorSession.swift */; };
+		10000000000000000000012C /* TaskVoiceInputController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000002C /* TaskVoiceInputController.swift */; };
 		200000000000000000000101 /* TaskStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000001 /* TaskStatus.swift */; };
 		200000000000000000000102 /* Priority.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000002 /* Priority.swift */; };
 		200000000000000000000103 /* ProjectStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000003 /* ProjectStatus.swift */; };
@@ -79,6 +81,8 @@
 		200000000000000000000128 /* KeychainService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000028 /* KeychainService.swift */; };
 		200000000000000000000129 /* AutoSyncService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000029 /* AutoSyncService.swift */; };
 		20000000000000000000012A /* ProjectColorPreset.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000002A /* ProjectColorPreset.swift */; };
+		20000000000000000000012B /* TaskEditorSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000002B /* TaskEditorSession.swift */; };
+		20000000000000000000012C /* TaskVoiceInputController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000002C /* TaskVoiceInputController.swift */; };
 		300000000000000000000101 /* PlannerCoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 300000000000000000000001 /* PlannerCoreTests.swift */; };
 		400000000000000000000101 /* TodayWidgetSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 400000000000000000000001 /* TodayWidgetSnapshot.swift */; };
 		400000000000000000000103 /* PlannerTodayWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 400000000000000000000003 /* PlannerTodayWidget.swift */; };
@@ -158,6 +162,8 @@
 		100000000000000000000028 /* KeychainService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainService.swift; sourceTree = "<group>"; };
 		100000000000000000000029 /* AutoSyncService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoSyncService.swift; sourceTree = "<group>"; };
 		10000000000000000000002A /* ProjectColorPreset.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectColorPreset.swift; sourceTree = "<group>"; };
+		10000000000000000000002B /* TaskEditorSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskEditorSession.swift; sourceTree = "<group>"; };
+		10000000000000000000002C /* TaskVoiceInputController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskVoiceInputController.swift; sourceTree = "<group>"; };
 		1000000000000000000000E0 /* PlannerApp-macOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "PlannerApp-macOS.entitlements"; sourceTree = "<group>"; };
 		1000000000000000000000E1 /* PlannerApp-iOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "PlannerApp-iOS.entitlements"; sourceTree = "<group>"; };
 		300000000000000000000001 /* PlannerCoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerCoreTests.swift; sourceTree = "<group>"; };
@@ -258,6 +264,8 @@
 			isa = PBXGroup;
 			children = (
 				100000000000000000000009 /* PlannerDataService.swift */,
+				10000000000000000000002B /* TaskEditorSession.swift */,
+				10000000000000000000002C /* TaskVoiceInputController.swift */,
 				100000000000000000000010 /* TaskListService.swift */,
 				100000000000000000000011 /* KanbanService.swift */,
 				100000000000000000000012 /* CalendarService.swift */,
@@ -533,6 +541,8 @@
 				100000000000000000000112 /* CalendarService.swift in Sources */,
 				100000000000000000000113 /* BackupService.swift in Sources */,
 				100000000000000000000115 /* NotificationService.swift in Sources */,
+				10000000000000000000012B /* TaskEditorSession.swift in Sources */,
+				10000000000000000000012C /* TaskVoiceInputController.swift in Sources */,
 				100000000000000000000125 /* SyncDTO.swift in Sources */,
 				100000000000000000000126 /* SyncClient.swift in Sources */,
 				100000000000000000000127 /* SyncService.swift in Sources */,
@@ -577,6 +587,8 @@
 				200000000000000000000112 /* CalendarService.swift in Sources */,
 				200000000000000000000113 /* BackupService.swift in Sources */,
 				200000000000000000000115 /* NotificationService.swift in Sources */,
+				20000000000000000000012B /* TaskEditorSession.swift in Sources */,
+				20000000000000000000012C /* TaskVoiceInputController.swift in Sources */,
 				200000000000000000000125 /* SyncDTO.swift in Sources */,
 				200000000000000000000126 /* SyncClient.swift in Sources */,
 				200000000000000000000127 /* SyncService.swift in Sources */,
@@ -636,6 +648,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = "";
+				CODE_SIGN_ENTITLEMENTS = "PlannerApp/macOS/PlannerApp-macOS.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = R6R5P8H5UP;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -658,6 +671,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = "";
+				CODE_SIGN_ENTITLEMENTS = "PlannerApp/macOS/PlannerApp-macOS.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = R6R5P8H5UP;
 				ENABLE_HARDENED_RUNTIME = YES;

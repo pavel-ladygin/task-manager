@@ -27,5 +27,9 @@
 		<key>NSAllowsArbitraryLoads</key>
 		<true/>
 	</dict>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Микрофон используется для диктовки названий задач.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Распознавание речи используется для преобразования диктовки в название задачи.</string>
 </dict>
 </plist>

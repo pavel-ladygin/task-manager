@@ -11,7 +11,6 @@ private enum IOSCalendarMode: String, CaseIterable, Identifiable {
 struct IOSCalendarView: View {
     let week: CalendarWeek
     let placements: [CalendarTaskPlacement]
-    let projects: [Project]
     @Binding var searchText: String
     let isCurrentWeek: Bool
     let goToPreviousWeek: () -> Void
@@ -19,11 +18,10 @@ struct IOSCalendarView: View {
     let goToCurrentWeek: () -> Void
     let movePlacement: (CalendarTaskPlacement, Date) -> Void
     let resizePlacement: (CalendarTaskPlacement, Date) -> Void
-    let deleteTask: (PlannerTask) -> Void
+    let openTask: (PlannerTask) -> Void
     let completeTask: (PlannerTask) -> Void
 
     @AppStorage("ios.calendar.mode") private var modeRawValue = IOSCalendarMode.week.rawValue
-    @State private var selectedTask: PlannerTask?
     @State private var selectedDayIndex = 0
 
     private var mode: Binding<IOSCalendarMode> {
@@ -53,15 +51,6 @@ struct IOSCalendarView: View {
         .tint(PlannerTheme.accent)
         .onAppear(perform: selectTodayIfVisible)
         .onChange(of: week.startOfWeek) { _, _ in selectedDayIndex = min(6, max(0, selectedDayIndex)) }
-        .sheet(item: $selectedTask) { task in
-            NavigationStack {
-                IOSTaskDetailView(
-                    task: task,
-                    projects: projects,
-                    deleteTask: { deleteTask($0); selectedTask = nil }
-                )
-            }
-        }
     }
 
     private var weekContent: some View {
@@ -73,7 +62,7 @@ struct IOSCalendarView: View {
                         day: day,
                         placements: placementsForDay(day),
                         allPlacements: placements,
-                        openTask: { selectedTask = $0 },
+                        openTask: openTask,
                         movePlacement: movePlacement,
                         completeTask: completeTask
                     )
@@ -92,7 +81,7 @@ struct IOSCalendarView: View {
                 previousDay: previousDay,
                 nextDay: nextDay,
                 goToday: { goToCurrentWeek(); selectTodayIfVisible() },
-                openTask: { selectedTask = $0 },
+                openTask: openTask,
                 movePlacement: movePlacement,
                 resizePlacement: resizePlacement,
                 completeTask: completeTask

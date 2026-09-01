@@ -101,3 +101,134 @@ enum PlannerTheme {
         return LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing)
     }
 }
+
+struct GlassHoverIconButtonStyle: ButtonStyle {
+    let size: CGFloat
+    var tint: Color = PlannerTheme.accent
+    var isProminent = false
+    var isEnabled = true
+    var appliesEffect = true
+
+    func makeBody(configuration: Configuration) -> some View {
+        GlassHoverIconButton(
+            configuration: configuration,
+            size: size,
+            tint: tint,
+            isProminent: isProminent,
+            isEnabled: isEnabled,
+            appliesEffect: appliesEffect
+        )
+    }
+}
+
+private struct GlassHoverIconButton: View {
+    let configuration: ButtonStyle.Configuration
+    let size: CGFloat
+    let tint: Color
+    let isProminent: Bool
+    let isEnabled: Bool
+    let appliesEffect: Bool
+
+    @State private var isHovered = false
+
+    private var interactionAmount: Double {
+        if configuration.isPressed { return 1 }
+        if isHovered { return 0.72 }
+        return 0
+    }
+
+    @ViewBuilder
+    var body: some View {
+        if appliesEffect {
+            glassButton
+        } else {
+            configuration.label
+        }
+    }
+
+    private var glassButton: some View {
+        configuration.label
+            .frame(width: size, height: size)
+            .foregroundStyle(foregroundColor)
+            .background {
+                GlassHoverButtonBackground(
+                    tint: tint,
+                    backgroundColor: backgroundColor,
+                    isProminent: isProminent,
+                    isHovered: isHovered,
+                    interactionAmount: interactionAmount
+                )
+            }
+            .scaleEffect(configuration.isPressed ? 0.94 : (isHovered ? 1.055 : 1))
+            .contentShape(Circle())
+            .onHover { hovering in
+                isHovered = hovering && isEnabled
+            }
+            .animation(.interactiveSpring(response: 0.24, dampingFraction: 0.76), value: isHovered)
+            .animation(.interactiveSpring(response: 0.18, dampingFraction: 0.70), value: configuration.isPressed)
+    }
+
+    private var foregroundColor: Color {
+        guard isEnabled else { return PlannerTheme.secondaryText.opacity(0.48) }
+        return isProminent ? .white : tint
+    }
+
+    private var backgroundColor: Color {
+        guard isEnabled else {
+            return isProminent ? PlannerTheme.elevatedBackground.opacity(0.72) : .clear
+        }
+        if isProminent {
+            return tint.opacity(configuration.isPressed ? 0.78 : 0.96)
+        }
+        return tint.opacity(interactionAmount * 0.16)
+    }
+}
+
+private struct GlassHoverButtonBackground: View {
+    let tint: Color
+    let backgroundColor: Color
+    let isProminent: Bool
+    let isHovered: Bool
+    let interactionAmount: Double
+
+    private var highlightOpacity: Double {
+        isProminent || isHovered ? 1 : 0
+    }
+
+    private var borderOpacity: Double {
+        isProminent ? 0.20 + interactionAmount * 0.10 : interactionAmount * 0.16
+    }
+
+    private var shadowOpacity: Double {
+        isProminent ? 0.16 + interactionAmount * 0.22 : interactionAmount * 0.18
+    }
+
+    var body: some View {
+        Circle()
+            .fill(backgroundColor)
+            .overlay(highlight)
+            .overlay(border)
+            .shadow(
+                color: tint.opacity(shadowOpacity),
+                radius: 4 + interactionAmount * 5,
+                y: 1 + interactionAmount
+            )
+    }
+
+    private var highlight: some View {
+        Circle()
+            .fill(
+                LinearGradient(
+                    colors: [Color.white.opacity(isProminent ? 0.20 : 0.10), Color.white.opacity(0.01)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+            .opacity(highlightOpacity)
+    }
+
+    private var border: some View {
+        Circle()
+            .strokeBorder(Color.white.opacity(borderOpacity), lineWidth: 0.75)
+    }
+}

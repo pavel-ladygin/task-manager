@@ -18,13 +18,16 @@ struct IOSMainView: View {
     @State private var syncStatus = "Не синхронизировано"
     @State private var autoSyncTask: Task<Void, Never>?
     @State private var isAutoSyncing = false
+    @State private var taskEditorSession: TaskEditorSession?
+    @StateObject private var voiceInputController = TaskVoiceInputController()
 
     private var currentSettings: AppSettings? {
         appSettings.first
     }
 
     var body: some View {
-        TabView {
+        ZStack {
+            TabView {
             taskNavigation(
                 title: "Сегодня",
                 systemImage: "sun.max",
@@ -56,7 +59,7 @@ struct IOSMainView: View {
                     searchText: $searchText,
                     createTask: createKanbanTask,
                     moveTask: moveTask,
-                    deleteTask: deleteTask,
+                    openTask: openTaskEditor,
                     completeTask: completeTask
                 )
             }
@@ -74,7 +77,6 @@ struct IOSMainView: View {
                         searchText: searchText,
                         week: week
                     ),
-                    projects: projects,
                     searchText: $searchText,
                     isCurrentWeek: isCurrentCalendarWeek,
                     goToPreviousWeek: { moveSelectedCalendarWeek(by: -1) },
@@ -82,7 +84,7 @@ struct IOSMainView: View {
                     goToCurrentWeek: goToCurrentCalendarWeek,
                     movePlacement: moveCalendarPlacement,
                     resizePlacement: resizeCalendarPlacement,
-                    deleteTask: deleteTask,
+                    openTask: openTaskEditor,
                     completeTask: completeTask
                 )
             }
@@ -94,7 +96,14 @@ struct IOSMainView: View {
             .tabItem {
                 Label("Еще", systemImage: "ellipsis.circle")
             }
+            }
+
+            if let taskEditorSession {
+                taskEditorOverlay(taskEditorSession)
+                    .zIndex(10)
+            }
         }
+        .environmentObject(voiceInputController)
         .tint(PlannerTheme.accent)
         .background(PlannerTheme.windowBackground)
         .preferredColorScheme(currentSettings?.appTheme.colorScheme)
@@ -121,6 +130,7 @@ struct IOSMainView: View {
             }
         }
         .onChange(of: taskSyncSignature) { _, _ in
+            taskEditorSession?.refreshIfClean()
             scheduleAutoSync(reason: "Изменения задач")
         }
         .onChange(of: projectSyncSignature) { _, _ in
@@ -135,12 +145,11 @@ struct IOSMainView: View {
                     NavigationLink {
                         IOSProjectsView(
                             projects: TaskListService.activeProjects(from: projects, searchText: searchText),
-                            allProjects: projects,
                             tasks: tasks,
                             searchText: $searchText,
                             createProject: createProject,
                             deleteProject: deleteProject,
-                            deleteTask: deleteTask,
+                            openTask: openTaskEditor,
                             completeTask: completeTask
                         )
                     } label: {
@@ -193,13 +202,78 @@ struct IOSMainView: View {
                 tasks: tasks,
                 sections: sections,
                 controls: controls,
-                projects: projects,
                 searchText: $searchText,
                 createTask: createTask,
                 deleteTask: deleteTask,
+                openTask: openTaskEditor,
                 completeTask: completeTask
             )
         }
+    }
+
+    private func taskEditorOverlay(_ session: TaskEditorSession) -> some View {
+        GeometryReader { proxy in
+            ZStack {
+                Color.black.opacity(0.42)
+                    .ignoresSafeArea()
+                    .contentShape(Rectangle())
+                    .onTapGesture(perform: saveAndCloseTaskEditor)
+
+                NavigationStack {
+                    IOSTaskDetailView(
+                        session: session,
+                        projects: projects,
+                        saveAndClose: saveAndCloseTaskEditor,
+                        discardAndClose: discardAndCloseTaskEditor,
+                        deleteTask: deleteTaskFromEditor
+                    )
+                }
+                .frame(
+                    width: min(max(proxy.size.width - 24, 300), 620),
+                    height: min(max(proxy.size.height - 48, 420), 780)
+                )
+                .background(PlannerTheme.windowBackground)
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .shadow(color: .black.opacity(0.35), radius: 24, y: 10)
+                .padding(12)
+            }
+        }
+        .transition(.opacity.combined(with: .scale(scale: 0.98)))
+    }
+
+    private func openTaskEditor(_ task: PlannerTask) {
+        voiceInputController.stop()
+        if let taskEditorSession {
+            guard taskEditorSession.saveAndSwitch(
+                to: task,
+                projects: projects,
+                context: modelContext
+            ) else {
+                return
+            }
+        } else {
+            taskEditorSession = TaskEditorSession.open(task)
+        }
+    }
+
+    private func saveAndCloseTaskEditor() {
+        guard let taskEditorSession else { return }
+        taskEditorSession.saveAndClose(projects: projects, context: modelContext) {
+            self.taskEditorSession = nil
+            scheduleAutoSync(reason: "Изменена задача")
+        }
+    }
+
+    private func discardAndCloseTaskEditor() {
+        guard let taskEditorSession else { return }
+        taskEditorSession.discardAndClose {
+            self.taskEditorSession = nil
+        }
+    }
+
+    private func deleteTaskFromEditor(_ task: PlannerTask) {
+        deleteTask(task)
+        taskEditorSession = nil
     }
 
     private var errorBinding: Binding<Bool> {
