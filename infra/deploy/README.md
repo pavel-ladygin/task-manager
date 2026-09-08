@@ -85,6 +85,8 @@ secrets, without printing them in workflow steps:
 * `VPS_HOST`
 * `VPS_USER` (`planner-deploy`)
 * `VPS_SSH_PRIVATE_KEY` (the private key whose public half is restricted above)
+* `VPS_KNOWN_HOSTS` (the exact output of `ssh-keyscan -H VPS_HOST` obtained
+  from a trusted network)
 
 The workflow should connect with `ssh "$VPS_USER@$VPS_HOST" deploy-planner-sync
 "$GITHUB_SHA"`; the immutable SHA is the only deployment input.
