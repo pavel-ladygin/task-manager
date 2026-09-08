@@ -2886,7 +2886,9 @@ private struct SettingsPlaceholderView: View {
     private var unresolvedConflicts: [SyncConflict] { syncConflicts.filter { $0.resolvedAt == nil } }
 
     private func resolve(_ conflict: SyncConflict, _ resolution: SyncConflictResolution) {
-        try? SyncService.resolve(conflict, resolution: resolution, context: modelContext)
+        Task { @MainActor in
+            try? SyncService.resolve(conflict, resolution: resolution, context: modelContext)
+        }
     }
 }
 #endif
