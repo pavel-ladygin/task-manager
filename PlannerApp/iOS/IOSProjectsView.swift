@@ -244,10 +244,14 @@ private struct IOSProjectEditorView: View {
         Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })
     }
     private func save() {
-        do {
-            try PlannerDataService.saveProject(project, draft: draft, context: modelContext)
-            dismiss()
-        } catch { errorMessage = error.localizedDescription }
+        Task { @MainActor in
+            do {
+                try PlannerDataService.saveProject(project, draft: draft, context: modelContext)
+                dismiss()
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
     }
 }
 
