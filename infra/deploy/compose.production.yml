@@ -1,0 +1,27 @@
+name: planner-sync
+
+services:
+  planner-sync:
+    image: ${GHCR_IMAGE:-ghcr.io/pavel-ladygin/task-manager/planner-sync}:${IMAGE_TAG:?IMAGE_TAG must be a 40-character commit SHA}
+    container_name: planner-sync
+    restart: unless-stopped
+    network_mode: host
+    env_file:
+      - /opt/planner-sync/.env
+    environment:
+      PLANNER_DB_PATH: ${PLANNER_DB_PATH:-/data/planner.db}
+      PLANNER_ADDR: ${PLANNER_ADDR:-:443}
+      PLANNER_TLS_CERT: ${PLANNER_TLS_CERT:-/certs/planner.crt}
+      PLANNER_TLS_KEY: ${PLANNER_TLS_KEY:-/certs/planner.key}
+    volumes:
+      - planner-sync-data:/data
+      - /opt/planner-sync/certs:/certs:ro
+    mem_limit: 256m
+    cpus: "0.50"
+
+volumes:
+  # Set PLANNER_DATA_VOLUME during bootstrap to the existing v1 volume name.
+  # The default matches a compose project named `planner-sync`.
+  planner-sync-data:
+    external: true
+    name: ${PLANNER_DATA_VOLUME:-planner-sync_planner-sync-data}

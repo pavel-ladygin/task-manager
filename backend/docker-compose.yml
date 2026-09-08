@@ -13,6 +13,17 @@ services:
       PLANNER_ADDR: ${PLANNER_ADDR:-:443}
       PLANNER_TLS_CERT: ${PLANNER_TLS_CERT:-/certs/planner.crt}
       PLANNER_TLS_KEY: ${PLANNER_TLS_KEY:-/certs/planner.key}
+      PLANNER_TELEGRAM_ENABLED: ${PLANNER_TELEGRAM_ENABLED:-false}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-}
+      TELEGRAM_ALLOWED_USER_ID: ${TELEGRAM_ALLOWED_USER_ID:-}
+      PLANNER_TIMEZONE: ${PLANNER_TIMEZONE:-Europe/Moscow}
+      STT_PRIMARY: ${STT_PRIMARY:-groq}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_STT_MODEL: ${GROQ_STT_MODEL:-whisper-large-v3}
+      STT_FALLBACK: ${STT_FALLBACK:-none}
+      YANDEX_API_KEY: ${YANDEX_API_KEY:-}
+      YANDEX_FOLDER_ID: ${YANDEX_FOLDER_ID:-}
     volumes:
       - planner-sync-data:/data
       - ./certs:/certs:ro

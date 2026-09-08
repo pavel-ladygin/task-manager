@@ -77,6 +77,7 @@ struct ProjectDetailView: View {
         Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })
     }
     @discardableResult
+    @MainActor
     private func save() -> Bool {
         do {
             try PlannerDataService.saveProject(editingProject, draft: draft, context: modelContext)

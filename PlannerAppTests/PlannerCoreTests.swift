@@ -1,8 +1,42 @@
+import Foundation
 import SwiftData
 import XCTest
 @testable import PlannerApp_macOS
 
 final class PlannerCoreTests: XCTestCase {
+    func testTelegramTaskPayloadDecodesAsSyncTask() throws {
+        let json = """
+        {
+          "id": "00000000-0000-4000-8000-000000000007",
+          "title": "Позвонить врачу",
+          "notes": "",
+          "status": "planned",
+          "priority": "none",
+          "recurrence": "none",
+          "recurrenceSeriesID": null,
+          "recurrenceAnchorDate": null,
+          "recurrenceSequence": 0,
+          "showInKanban": true,
+          "scheduled": "2026-09-08T15:00:00+03:00",
+          "due": null,
+          "createdAt": "2026-09-07T18:00:00+03:00",
+          "updatedAt": "2026-09-07T18:00:00+03:00",
+          "completedAt": null,
+          "projectID": null,
+          "tagIDs": [],
+          "checklistItems": [],
+          "manualOrder": 0
+        }
+        """
+        let task = try SyncClient.decoder.decode(TaskBackupDTO.self, from: Data(json.utf8))
+
+        XCTAssertEqual(task.id.uuidString.lowercased(), "00000000-0000-4000-8000-000000000007")
+        XCTAssertEqual(task.title, "Позвонить врачу")
+        XCTAssertEqual(task.status, "planned")
+        XCTAssertNotNil(task.scheduled)
+        XCTAssertNil(task.due)
+    }
+
     func testWeekdaysSkipsWeekend() throws {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!

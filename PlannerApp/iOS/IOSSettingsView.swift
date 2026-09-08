@@ -259,8 +259,13 @@ struct IOSSettingsView: View {
     private var unresolvedConflicts: [SyncConflict] { syncConflicts.filter { $0.resolvedAt == nil } }
 
     private func resolve(_ conflict: SyncConflict, _ resolution: SyncConflictResolution) {
-        do { try SyncService.resolve(conflict, resolution: resolution, context: modelContext) }
-        catch { errorMessage = error.localizedDescription }
+        Task { @MainActor in
+            do {
+                try SyncService.resolve(conflict, resolution: resolution, context: modelContext)
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
     }
 
     private func loadConnectionDrafts(_ settings: AppSettings) {

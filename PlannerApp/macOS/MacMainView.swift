@@ -121,7 +121,8 @@ struct MacMainView: View {
     @State private var notificationStatus = "Неизвестно"
     @State private var syncToken = ""
     @State private var syncStatus = "Не синхронизировано"
-    @State private var autoSyncTask: Swift.Task<Void, Never>?
+    @State private var autoSyncTask: Task<Void, Never>?
+    @State private var activeSyncPollingTask: Task<Void, Never>?
     @State private var isAutoSyncing = false
     @State private var taskEditorSession: TaskEditorSession?
     @StateObject private var voiceInputController = TaskVoiceInputController()
@@ -203,12 +204,18 @@ struct MacMainView: View {
                 refreshNotificationStatus()
                 syncToken = KeychainService.loadSyncToken()
                 triggerAutoSyncNow(reason: "Запуск")
+                startActiveSyncPolling()
+            }
+            .onDisappear {
+                stopActiveSyncPolling()
             }
             .onChange(of: scenePhase) { _, newPhase in
                 switch newPhase {
                 case .active:
                     triggerAutoSyncNow(reason: "Вход")
+                    startActiveSyncPolling()
                 case .inactive, .background:
+                    stopActiveSyncPolling()
                     triggerAutoSyncNow(reason: "Выход")
                 @unknown default:
                     break
@@ -757,6 +764,9 @@ struct MacMainView: View {
             try PlannerDataService.setSyncEnabled(isEnabled, settings: settings, context: modelContext)
             if isEnabled {
                 triggerAutoSyncNow(reason: "Синхронизация включена")
+                startActiveSyncPolling()
+            } else {
+                stopActiveSyncPolling()
             }
         } catch {
             errorMessage = error.localizedDescription
@@ -766,6 +776,7 @@ struct MacMainView: View {
     private func setSyncServerURL(_ serverURL: String, settings: AppSettings) {
         do {
             try PlannerDataService.setSyncServerURL(serverURL, settings: settings, context: modelContext)
+            startActiveSyncPolling()
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -774,6 +785,7 @@ struct MacMainView: View {
     private func setSyncCertificateFingerprint(_ fingerprint: String, settings: AppSettings) {
         do {
             try PlannerDataService.setSyncCertificateFingerprint(fingerprint, settings: settings, context: modelContext)
+            startActiveSyncPolling()
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -783,13 +795,14 @@ struct MacMainView: View {
         syncToken = token
         do {
             try KeychainService.saveSyncToken(token)
+            startActiveSyncPolling()
         } catch {
             errorMessage = error.localizedDescription
         }
     }
 
     private func testSyncConnection(_ settings: AppSettings) {
-        Swift.Task {
+        Task {
             do {
                 let response = try await SyncService.testConnection(settings: settings, token: syncToken)
                 syncStatus = "Подключение OK, cursor \(response.serverCursor)"
@@ -801,7 +814,7 @@ struct MacMainView: View {
     }
 
     private func bootstrapSync(_ settings: AppSettings) {
-        Swift.Task {
+        Task {
             do {
                 let result = try await SyncService.bootstrap(context: modelContext, settings: settings, token: syncToken)
                 syncStatus = "Bootstrap OK: отправлено \(result.pushed), cursor \(result.cursor)"
@@ -813,7 +826,7 @@ struct MacMainView: View {
     }
 
     private func syncNow(_ settings: AppSettings) {
-        Swift.Task {
+        Task {
             do {
                 let result = try await SyncService.syncNow(context: modelContext, settings: settings, token: syncToken)
                 syncStatus = "Sync OK: отправлено \(result.pushed), получено \(result.pulled), cursor \(result.cursor)"
@@ -916,7 +929,7 @@ struct MacMainView: View {
     }
 
     private func requestNotificationAuthorization() {
-        Swift.Task {
+        Task {
             do {
                 let isGranted = try await NotificationService.requestAuthorization()
                 notificationStatus = isGranted
@@ -929,7 +942,7 @@ struct MacMainView: View {
     }
 
     private func refreshNotificationStatus() {
-        Swift.Task {
+        Task {
             notificationStatus = await NotificationService.authorizationStatusDescription()
         }
     }
@@ -948,14 +961,14 @@ struct MacMainView: View {
         }
 
         autoSyncTask?.cancel()
-        autoSyncTask = Swift.Task {
+        autoSyncTask = Task {
             do {
-                try await Swift.Task.sleep(nanoseconds: AutoSyncService.debounceDelayNanoseconds)
+                try await Task.sleep(nanoseconds: AutoSyncService.debounceDelayNanoseconds)
             } catch {
                 return
             }
 
-            guard !Swift.Task.isCancelled else {
+            guard !Task.isCancelled else {
                 return
             }
 
@@ -970,9 +983,35 @@ struct MacMainView: View {
 
         autoSyncTask?.cancel()
         autoSyncTask = nil
-        Swift.Task {
+        Task {
             await performAutoSync(reason: reason, showErrors: false)
         }
+    }
+
+    private func startActiveSyncPolling() {
+        stopActiveSyncPolling()
+        guard
+            scenePhase == .active,
+            AutoSyncService.canSync(settings: currentSettings, token: syncToken)
+        else {
+            return
+        }
+        activeSyncPollingTask = Task {
+            while !Task.isCancelled {
+                do {
+                    try await Task.sleep(nanoseconds: AutoSyncService.activePollingIntervalNanoseconds)
+                } catch {
+                    return
+                }
+                guard !Task.isCancelled else { return }
+                await performAutoSync(reason: "Периодическое обновление", showErrors: false)
+            }
+        }
+    }
+
+    private func stopActiveSyncPolling() {
+        activeSyncPollingTask?.cancel()
+        activeSyncPollingTask = nil
     }
 
     private func performAutoSync(reason: String, showErrors: Bool) async {
@@ -2847,7 +2886,9 @@ private struct SettingsPlaceholderView: View {
     private var unresolvedConflicts: [SyncConflict] { syncConflicts.filter { $0.resolvedAt == nil } }
 
     private func resolve(_ conflict: SyncConflict, _ resolution: SyncConflictResolution) {
-        try? SyncService.resolve(conflict, resolution: resolution, context: modelContext)
+        Task { @MainActor in
+            try? SyncService.resolve(conflict, resolution: resolution, context: modelContext)
+        }
     }
 }
 #endif

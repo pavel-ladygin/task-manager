@@ -4,6 +4,7 @@ import SwiftData
 @MainActor
 enum AutoSyncService {
     static let debounceDelayNanoseconds: UInt64 = 2_500_000_000
+    static let activePollingIntervalNanoseconds: UInt64 = 10_000_000_000
 
     static func canSync(settings: AppSettings?, token: String) -> Bool {
         guard let settings, settings.syncEnabled else {

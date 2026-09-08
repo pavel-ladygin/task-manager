@@ -57,7 +57,7 @@ type MutationResult struct {
 	Current        *Change
 }
 
-const latestSchemaVersion = 3
+const latestSchemaVersion = 5
 
 func Open(path string) (*Store, error) {
 	db, err := sql.Open("sqlite3", path+"?_busy_timeout=5000&_journal_mode=WAL&_foreign_keys=ON")
@@ -152,6 +152,52 @@ func (store *Store) migrate() error {
 			`INSERT OR IGNORE INTO sync_meta (key, value)
 			SELECT 'initialized',
 				CASE WHEN EXISTS (SELECT 1 FROM entity_heads) THEN '1' ELSE '0' END`,
+		},
+		4: {
+			`CREATE TABLE IF NOT EXISTS telegram_updates (
+			bot_id TEXT NOT NULL,
+			update_id INTEGER NOT NULL,
+			chat_id INTEGER NOT NULL,
+			message_date INTEGER NOT NULL,
+			kind TEXT NOT NULL CHECK(kind IN ('text', 'voice', 'help', 'unsupported')),
+			payload_json TEXT,
+			task_id TEXT NOT NULL,
+			status TEXT NOT NULL CHECK(status IN ('queued', 'processing', 'committed', 'done', 'failed')),
+			attempt_count INTEGER NOT NULL DEFAULT 0,
+			next_attempt_at TEXT NOT NULL,
+			lease_until TEXT,
+			server_revision INTEGER,
+			confirmation_text TEXT,
+			last_error TEXT,
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL,
+			PRIMARY KEY(bot_id, update_id)
+		)`,
+			`CREATE INDEX IF NOT EXISTS idx_telegram_updates_pending
+			ON telegram_updates(bot_id, status, next_attempt_at, lease_until)`,
+		},
+		5: {
+			`CREATE TABLE IF NOT EXISTS telegram_notifications (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				bot_id TEXT NOT NULL,
+				event_key TEXT NOT NULL,
+				chat_id INTEGER NOT NULL,
+				kind TEXT NOT NULL,
+				task_id TEXT,
+				event_time TEXT NOT NULL,
+				payload_json TEXT,
+				metadata_json TEXT,
+				status TEXT NOT NULL CHECK(status IN ('queued', 'processing', 'done', 'failed')),
+				attempt_count INTEGER NOT NULL DEFAULT 0,
+				next_attempt_at TEXT NOT NULL,
+				lease_until TEXT,
+				last_error TEXT,
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				UNIQUE(bot_id, event_key)
+			)`,
+			`CREATE INDEX IF NOT EXISTS idx_telegram_notifications_pending
+			 ON telegram_notifications(bot_id, status, next_attempt_at, lease_until)`,
 		},
 	}
 

@@ -6,15 +6,21 @@ import SwiftUI
 @main
 struct PlannerApp: App {
     @StateObject private var store = PlannerStoreBootstrap()
+    #if os(iOS)
+    @StateObject private var habits = HabitStore()
+    #endif
 
     var body: some Scene {
         WindowGroup {
             Group {
                 if let container = store.container {
                     #if os(macOS)
-                    MacMainView().modelContainer(container)
+                    MacMainView()
+                        .modelContainer(container)
                     #else
-                    IOSMainView().modelContainer(container)
+                    IOSMainView()
+                        .modelContainer(container)
+                        .environmentObject(habits)
                     #endif
                 } else {
                     PlannerStoreRecoveryView(store: store)
