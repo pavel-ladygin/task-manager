@@ -6,7 +6,10 @@ set -eu
 APP_DIR=${APP_DIR:-/opt/planner-sync}
 COMPOSE_FILE=${COMPOSE_FILE:-$APP_DIR/compose.production.yml}
 STATE_FILE=${STATE_FILE:-/var/lib/planner-sync/active-tag}
-HEALTH_URL=${HEALTH_URL:-https://127.0.0.1/health}
+# Leave this empty by default so the health check follows the effective
+# PLANNER_ADDR in the running container. Operators can override it explicitly
+# for deployments where the endpoint is not on the planner listener port.
+HEALTH_URL=${HEALTH_URL:-}
 HEALTH_ATTEMPTS=${HEALTH_ATTEMPTS:-30}
 
 die() {
@@ -56,9 +59,34 @@ compose() {
 }
 
 wait_for_health() {
+  health_url=$HEALTH_URL
+  if [ -z "$health_url" ]; then
+    container_running=$(docker inspect --format '{{.State.Running}}' planner-sync 2>/dev/null || true)
+    [ "$container_running" = true ] || return 1
+
+    planner_addr=$(docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' planner-sync 2>/dev/null \
+      | awk -F= '$1 == "PLANNER_ADDR" { print substr($0, index($0, "=") + 1); exit }')
+    planner_addr=${planner_addr:-:443}
+    case "$planner_addr" in
+      *:*) health_port=${planner_addr##*:} ;;
+      *) return 1 ;;
+    esac
+
+    # Accept only a decimal TCP port in the valid range. Strip leading zeroes
+    # before test(1) so values such as :08443 are handled portably by POSIX sh.
+    case "$health_port" in
+      ''|*[!0123456789]*) return 1 ;;
+    esac
+    health_port_number=$(printf '%s' "$health_port" | sed 's/^0*//')
+    health_port_number=${health_port_number:-0}
+    [ "$health_port_number" -ge 1 ] 2>/dev/null || return 1
+    [ "$health_port_number" -le 65535 ] 2>/dev/null || return 1
+    health_url="https://127.0.0.1:$health_port_number/health"
+  fi
+
   attempt=1
   while [ "$attempt" -le "$HEALTH_ATTEMPTS" ]; do
-    if curl --fail --silent --show-error --insecure --max-time 5 "$HEALTH_URL" >/dev/null 2>&1; then
+    if curl --fail --silent --show-error --insecure --max-time 5 "$health_url" >/dev/null 2>&1; then
       return 0
     fi
     sleep 2
