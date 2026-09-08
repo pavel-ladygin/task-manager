@@ -121,8 +121,8 @@ struct MacMainView: View {
     @State private var notificationStatus = "Неизвестно"
     @State private var syncToken = ""
     @State private var syncStatus = "Не синхронизировано"
-    @State private var autoSyncTask: Swift.Task<Void, Never>?
-    @State private var activeSyncPollingTask: Swift.Task<Void, Never>?
+    @State private var autoSyncTask: Task<Void, Never>?
+    @State private var activeSyncPollingTask: Task<Void, Never>?
     @State private var isAutoSyncing = false
     @State private var taskEditorSession: TaskEditorSession?
     @StateObject private var voiceInputController = TaskVoiceInputController()
@@ -802,7 +802,7 @@ struct MacMainView: View {
     }
 
     private func testSyncConnection(_ settings: AppSettings) {
-        Swift.Task {
+        Task {
             do {
                 let response = try await SyncService.testConnection(settings: settings, token: syncToken)
                 syncStatus = "Подключение OK, cursor \(response.serverCursor)"
@@ -814,7 +814,7 @@ struct MacMainView: View {
     }
 
     private func bootstrapSync(_ settings: AppSettings) {
-        Swift.Task {
+        Task {
             do {
                 let result = try await SyncService.bootstrap(context: modelContext, settings: settings, token: syncToken)
                 syncStatus = "Bootstrap OK: отправлено \(result.pushed), cursor \(result.cursor)"
@@ -826,7 +826,7 @@ struct MacMainView: View {
     }
 
     private func syncNow(_ settings: AppSettings) {
-        Swift.Task {
+        Task {
             do {
                 let result = try await SyncService.syncNow(context: modelContext, settings: settings, token: syncToken)
                 syncStatus = "Sync OK: отправлено \(result.pushed), получено \(result.pulled), cursor \(result.cursor)"
@@ -929,7 +929,7 @@ struct MacMainView: View {
     }
 
     private func requestNotificationAuthorization() {
-        Swift.Task {
+        Task {
             do {
                 let isGranted = try await NotificationService.requestAuthorization()
                 notificationStatus = isGranted
@@ -942,7 +942,7 @@ struct MacMainView: View {
     }
 
     private func refreshNotificationStatus() {
-        Swift.Task {
+        Task {
             notificationStatus = await NotificationService.authorizationStatusDescription()
         }
     }
@@ -961,14 +961,14 @@ struct MacMainView: View {
         }
 
         autoSyncTask?.cancel()
-        autoSyncTask = Swift.Task {
+        autoSyncTask = Task {
             do {
-                try await Swift.Task.sleep(nanoseconds: AutoSyncService.debounceDelayNanoseconds)
+                try await Task.sleep(nanoseconds: AutoSyncService.debounceDelayNanoseconds)
             } catch {
                 return
             }
 
-            guard !Swift.Task.isCancelled else {
+            guard !Task.isCancelled else {
                 return
             }
 
@@ -983,7 +983,7 @@ struct MacMainView: View {
 
         autoSyncTask?.cancel()
         autoSyncTask = nil
-        Swift.Task {
+        Task {
             await performAutoSync(reason: reason, showErrors: false)
         }
     }
@@ -996,14 +996,14 @@ struct MacMainView: View {
         else {
             return
         }
-        activeSyncPollingTask = Swift.Task {
-            while !Swift.Task.isCancelled {
+        activeSyncPollingTask = Task {
+            while !Task.isCancelled {
                 do {
-                    try await Swift.Task.sleep(nanoseconds: AutoSyncService.activePollingIntervalNanoseconds)
+                    try await Task.sleep(nanoseconds: AutoSyncService.activePollingIntervalNanoseconds)
                 } catch {
                     return
                 }
-                guard !Swift.Task.isCancelled else { return }
+                guard !Task.isCancelled else { return }
                 await performAutoSync(reason: "Периодическое обновление", showErrors: false)
             }
         }
