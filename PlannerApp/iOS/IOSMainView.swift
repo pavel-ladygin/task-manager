@@ -17,6 +17,7 @@ struct IOSMainView: View {
     @State private var syncToken = ""
     @State private var syncStatus = "Не синхронизировано"
     @State private var autoSyncTask: Task<Void, Never>?
+    @State private var activeSyncPollingTask: Task<Void, Never>?
     @State private var isAutoSyncing = false
     @State private var taskEditorSession: TaskEditorSession?
     @StateObject private var voiceInputController = TaskVoiceInputController()
@@ -118,12 +119,18 @@ struct IOSMainView: View {
             ensureAppSettings()
             syncToken = KeychainService.loadSyncToken()
             triggerAutoSyncNow(reason: "Запуск")
+            startActiveSyncPolling()
+        }
+        .onDisappear {
+            stopActiveSyncPolling()
         }
         .onChange(of: scenePhase) { _, newPhase in
             switch newPhase {
             case .active:
                 triggerAutoSyncNow(reason: "Вход")
+                startActiveSyncPolling()
             case .inactive, .background:
+                stopActiveSyncPolling()
                 triggerAutoSyncNow(reason: "Выход")
             @unknown default:
                 break
@@ -142,6 +149,12 @@ struct IOSMainView: View {
         NavigationStack {
             List {
                 Section("Разделы") {
+                    NavigationLink {
+                        HabitManagementView()
+                    } label: {
+                        Label("Привычки", systemImage: "sparkles")
+                    }
+
                     NavigationLink {
                         IOSProjectsView(
                             projects: TaskListService.activeProjects(from: projects, searchText: searchText),
@@ -344,6 +357,8 @@ struct IOSMainView: View {
     private var todayControls: AnyView {
         AnyView(
             VStack(alignment: .leading, spacing: 10) {
+                HabitRitualCard()
+
                 Picker("Режим", selection: $todayListMode) {
                     ForEach(IOSTodayListMode.allCases) { mode in
                         Text(mode.displayName).tag(mode)
@@ -540,6 +555,9 @@ struct IOSMainView: View {
             try PlannerDataService.setSyncEnabled(isEnabled, settings: settings, context: modelContext)
             if isEnabled {
                 triggerAutoSyncNow(reason: "Синхронизация включена")
+                startActiveSyncPolling()
+            } else {
+                stopActiveSyncPolling()
             }
         } catch {
             errorMessage = error.localizedDescription
@@ -549,6 +567,7 @@ struct IOSMainView: View {
     private func setSyncServerURL(_ serverURL: String, settings: AppSettings) {
         do {
             try PlannerDataService.setSyncServerURL(serverURL, settings: settings, context: modelContext)
+            startActiveSyncPolling()
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -557,6 +576,7 @@ struct IOSMainView: View {
     private func setSyncCertificateFingerprint(_ fingerprint: String, settings: AppSettings) {
         do {
             try PlannerDataService.setSyncCertificateFingerprint(fingerprint, settings: settings, context: modelContext)
+            startActiveSyncPolling()
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -566,6 +586,7 @@ struct IOSMainView: View {
         syncToken = token
         do {
             try KeychainService.saveSyncToken(token)
+            startActiveSyncPolling()
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -652,6 +673,32 @@ struct IOSMainView: View {
         Task {
             await performAutoSync(reason: reason, showErrors: false)
         }
+    }
+
+    private func startActiveSyncPolling() {
+        stopActiveSyncPolling()
+        guard
+            scenePhase == .active,
+            AutoSyncService.canSync(settings: currentSettings, token: syncToken)
+        else {
+            return
+        }
+        activeSyncPollingTask = Task {
+            while !Task.isCancelled {
+                do {
+                    try await Task.sleep(nanoseconds: AutoSyncService.activePollingIntervalNanoseconds)
+                } catch {
+                    return
+                }
+                guard !Task.isCancelled else { return }
+                await performAutoSync(reason: "Периодическое обновление", showErrors: false)
+            }
+        }
+    }
+
+    private func stopActiveSyncPolling() {
+        activeSyncPollingTask?.cancel()
+        activeSyncPollingTask = nil
     }
 
     private func performAutoSync(reason: String, showErrors: Bool) async {

@@ -110,7 +110,7 @@ struct IOSTaskListView: View {
         .tint(PlannerTheme.accent)
         .searchable(text: $searchText, prompt: "Поиск")
         .overlay {
-            if isEmpty {
+            if isEmpty && controls == nil {
                 ContentUnavailableView(
                     emptyTitle,
                     systemImage: systemImage,

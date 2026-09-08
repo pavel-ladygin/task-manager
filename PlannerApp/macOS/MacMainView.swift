@@ -122,6 +122,7 @@ struct MacMainView: View {
     @State private var syncToken = ""
     @State private var syncStatus = "Не синхронизировано"
     @State private var autoSyncTask: Swift.Task<Void, Never>?
+    @State private var activeSyncPollingTask: Swift.Task<Void, Never>?
     @State private var isAutoSyncing = false
     @State private var taskEditorSession: TaskEditorSession?
     @StateObject private var voiceInputController = TaskVoiceInputController()
@@ -203,12 +204,18 @@ struct MacMainView: View {
                 refreshNotificationStatus()
                 syncToken = KeychainService.loadSyncToken()
                 triggerAutoSyncNow(reason: "Запуск")
+                startActiveSyncPolling()
+            }
+            .onDisappear {
+                stopActiveSyncPolling()
             }
             .onChange(of: scenePhase) { _, newPhase in
                 switch newPhase {
                 case .active:
                     triggerAutoSyncNow(reason: "Вход")
+                    startActiveSyncPolling()
                 case .inactive, .background:
+                    stopActiveSyncPolling()
                     triggerAutoSyncNow(reason: "Выход")
                 @unknown default:
                     break
@@ -757,6 +764,9 @@ struct MacMainView: View {
             try PlannerDataService.setSyncEnabled(isEnabled, settings: settings, context: modelContext)
             if isEnabled {
                 triggerAutoSyncNow(reason: "Синхронизация включена")
+                startActiveSyncPolling()
+            } else {
+                stopActiveSyncPolling()
             }
         } catch {
             errorMessage = error.localizedDescription
@@ -766,6 +776,7 @@ struct MacMainView: View {
     private func setSyncServerURL(_ serverURL: String, settings: AppSettings) {
         do {
             try PlannerDataService.setSyncServerURL(serverURL, settings: settings, context: modelContext)
+            startActiveSyncPolling()
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -774,6 +785,7 @@ struct MacMainView: View {
     private func setSyncCertificateFingerprint(_ fingerprint: String, settings: AppSettings) {
         do {
             try PlannerDataService.setSyncCertificateFingerprint(fingerprint, settings: settings, context: modelContext)
+            startActiveSyncPolling()
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -783,6 +795,7 @@ struct MacMainView: View {
         syncToken = token
         do {
             try KeychainService.saveSyncToken(token)
+            startActiveSyncPolling()
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -973,6 +986,32 @@ struct MacMainView: View {
         Swift.Task {
             await performAutoSync(reason: reason, showErrors: false)
         }
+    }
+
+    private func startActiveSyncPolling() {
+        stopActiveSyncPolling()
+        guard
+            scenePhase == .active,
+            AutoSyncService.canSync(settings: currentSettings, token: syncToken)
+        else {
+            return
+        }
+        activeSyncPollingTask = Swift.Task {
+            while !Swift.Task.isCancelled {
+                do {
+                    try await Swift.Task.sleep(nanoseconds: AutoSyncService.activePollingIntervalNanoseconds)
+                } catch {
+                    return
+                }
+                guard !Swift.Task.isCancelled else { return }
+                await performAutoSync(reason: "Периодическое обновление", showErrors: false)
+            }
+        }
+    }
+
+    private func stopActiveSyncPolling() {
+        activeSyncPollingTask?.cancel()
+        activeSyncPollingTask = nil
     }
 
     private func performAutoSync(reason: String, showErrors: Bool) async {

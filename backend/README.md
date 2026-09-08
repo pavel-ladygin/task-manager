@@ -53,6 +53,68 @@ is newer than the binary supports.
 Keep the database volume and `migration-backups` in regular infrastructure
 backups as well; the automatic copy only protects the migration boundary.
 
+## Telegram quick capture
+
+The same process can accept private Telegram messages, transcribe short voice
+notes, parse a small deterministic Russian date/time grammar, and append tasks
+through the v2 change log. No Redis, ffmpeg, or separate worker service is
+required. Telegram support is off by default.
+
+Required values when `PLANNER_TELEGRAM_ENABLED=true`:
+
+- `TELEGRAM_BOT_TOKEN` from BotFather;
+- `TELEGRAM_WEBHOOK_SECRET`, 16–256 letters, digits, underscores, or hyphens;
+- `TELEGRAM_ALLOWED_USER_ID`, the numeric ID of the only permitted user;
+- `GROQ_API_KEY`; `GROQ_STT_MODEL` defaults to `whisper-large-v3`;
+- `PLANNER_TIMEZONE`, which defaults to `Europe/Moscow`.
+
+Voice messages are limited to 30 seconds and 1 MiB. They are downloaded as OGG
+and sent directly to Groq. Enable Zero Data Retention for the Groq project. To
+use the optional Yandex SpeechKit fallback, set `STT_FALLBACK=yandex` together
+with `YANDEX_API_KEY` and `YANDEX_FOLDER_ID`; otherwise leave it as `none`.
+
+Before registering the webhook, send a message to the bot and call `getUpdates`
+to read the numeric `message.from.id`. Then register only message updates. With
+the self-signed certificate from the deployment example, upload the public
+certificate in the same request:
+
+```bash
+curl "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getUpdates"
+curl -F "url=https://91.108.189.121/telegram/webhook" \
+  -F "secret_token=${TELEGRAM_WEBHOOK_SECRET}" \
+  -F 'allowed_updates=["message"]' \
+  -F "certificate=@certs/planner.crt" \
+  "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook"
+curl "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getWebhookInfo"
+```
+
+Supported examples include `купить молоко сегодня в 18:00`, `позвонить врачу
+завтра в пятнадцать`, and `сдать отчёт до завтра`. Relative dates are calculated
+from the original Telegram message time. Ambiguous or unsupported expressions
+are rejected with an example instead of silently creating a wrongly dated task.
+
+The `telegram_updates` SQLite queue deduplicates by bot and update ID and resumes
+expired work after a restart. Task text and voice file identifiers are removed
+from terminal queue rows. The existing app sync protocol is unchanged.
+
+### Telegram notifications
+
+When Telegram support is enabled, the backend also sends proactive messages to
+the private chat identified by `TELEGRAM_ALLOWED_USER_ID`:
+
+- a daily summary at 07:00 in `PLANNER_TIMEZONE`; it mirrors the app's Today
+  view, including active overdue tasks and tasks whose scheduled time or due
+  date is no later than the end of today;
+- a reminder 15 minutes before an active task's `scheduled` time. Due dates do
+  not produce a Telegram reminder.
+
+The schedule and lead time are fixed server policies. They are independent of
+the Apple app's local notification setting. Delivery state is kept in SQLite,
+so retries and process restarts do not normally duplicate notifications. Events
+whose trigger passed while the backend was stopped are deliberately not sent
+later. A task created or rescheduled after its reminder trigger is also not
+backfilled.
+
 ## One-time transition from v1
 
 1. Stop every old client so it cannot write through the v1 protocol.

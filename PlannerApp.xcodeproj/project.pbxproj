@@ -83,6 +83,8 @@
 		20000000000000000000012A /* ProjectColorPreset.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000002A /* ProjectColorPreset.swift */; };
 		20000000000000000000012B /* TaskEditorSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000002B /* TaskEditorSession.swift */; };
 		20000000000000000000012C /* TaskVoiceInputController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000002C /* TaskVoiceInputController.swift */; };
+		20000000000000000000012F /* HabitStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000012D /* HabitStore.swift */; };
+		200000000000000000000130 /* HabitViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000012E /* HabitViews.swift */; };
 		300000000000000000000101 /* PlannerCoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 300000000000000000000001 /* PlannerCoreTests.swift */; };
 		400000000000000000000101 /* TodayWidgetSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 400000000000000000000001 /* TodayWidgetSnapshot.swift */; };
 		400000000000000000000103 /* PlannerTodayWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 400000000000000000000003 /* PlannerTodayWidget.swift */; };
@@ -164,6 +166,8 @@
 		10000000000000000000002A /* ProjectColorPreset.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectColorPreset.swift; sourceTree = "<group>"; };
 		10000000000000000000002B /* TaskEditorSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskEditorSession.swift; sourceTree = "<group>"; };
 		10000000000000000000002C /* TaskVoiceInputController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskVoiceInputController.swift; sourceTree = "<group>"; };
+		10000000000000000000012D /* HabitStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Habits/HabitStore.swift; sourceTree = "<group>"; };
+		10000000000000000000012E /* HabitViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/Habits/HabitViews.swift; sourceTree = "<group>"; };
 		1000000000000000000000E0 /* PlannerApp-macOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "PlannerApp-macOS.entitlements"; sourceTree = "<group>"; };
 		1000000000000000000000E1 /* PlannerApp-iOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "PlannerApp-iOS.entitlements"; sourceTree = "<group>"; };
 		300000000000000000000001 /* PlannerCoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerCoreTests.swift; sourceTree = "<group>"; };
@@ -221,6 +225,7 @@
 			isa = PBXGroup;
 			children = (
 				10000000000000000000000B /* PlannerApp.swift */,
+				10000000000000000000012E /* HabitViews.swift */,
 				100000000000000000000042 /* Core */,
 				100000000000000000000046 /* Features */,
 				100000000000000000000047 /* macOS */,
@@ -237,6 +242,7 @@
 				100000000000000000000045 /* Utils */,
 				100000000000000000000049 /* Sync */,
 				400000000000000000000040 /* Widget */,
+				10000000000000000000012D /* HabitStore.swift */,
 			);
 			path = Core;
 			sourceTree = "<group>";
@@ -589,6 +595,8 @@
 				200000000000000000000115 /* NotificationService.swift in Sources */,
 				20000000000000000000012B /* TaskEditorSession.swift in Sources */,
 				20000000000000000000012C /* TaskVoiceInputController.swift in Sources */,
+				20000000000000000000012F /* HabitStore.swift in Sources */,
+				200000000000000000000130 /* HabitViews.swift in Sources */,
 				200000000000000000000125 /* SyncDTO.swift in Sources */,
 				200000000000000000000126 /* SyncClient.swift in Sources */,
 				200000000000000000000127 /* SyncService.swift in Sources */,

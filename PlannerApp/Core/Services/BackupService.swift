@@ -8,6 +8,9 @@ struct PlannerBackupDTO: Codable {
     let projects: [ProjectBackupDTO]
     let tags: [TagBackupDTO]
     let settings: SettingsBackupDTO?
+    #if os(iOS)
+    let habits: [Habit]?
+    #endif
 }
 
 struct TaskBackupDTO: Codable {
@@ -87,8 +90,12 @@ enum BackupError: LocalizedError {
 
 @MainActor
 enum BackupService {
+    #if os(iOS)
+    private static let supportedSchemaVersion = 3
+    #else
     private static let supportedSchemaVersion = 2
-    private static let readableSchemaVersions: Set<Int> = [1, 2]
+    #endif
+    private static let readableSchemaVersions: Set<Int> = [1, 2, 3]
 
     private struct BackupVersionEnvelope: Decodable {
         let schemaVersion: Int
@@ -108,6 +115,17 @@ enum BackupService {
             sortBy: [SortDescriptor(\.createdAt, order: .forward)]
         )).first
 
+        #if os(iOS)
+        let backup = PlannerBackupDTO(
+            schemaVersion: supportedSchemaVersion,
+            exportedAt: .now,
+            tasks: tasks.map(taskDTO),
+            projects: projects.map(projectDTO),
+            tags: tags.map(tagDTO),
+            settings: settings.map(settingsDTO),
+            habits: HabitStore.persistedHabits()
+        )
+        #else
         let backup = PlannerBackupDTO(
             schemaVersion: supportedSchemaVersion,
             exportedAt: .now,
@@ -116,6 +134,7 @@ enum BackupService {
             tags: tags.map(tagDTO),
             settings: settings.map(settingsDTO)
         )
+        #endif
 
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
@@ -220,6 +239,9 @@ enum BackupService {
             }
 
             try context.save()
+            #if os(iOS)
+            HabitStore.replacePersistedHabits(backup.habits ?? [])
+            #endif
         } catch let error as BackupError {
             context.rollback()
             throw error
@@ -253,6 +275,12 @@ enum BackupService {
         for tag in backup.tags {
             try validateTitle(tag.title, entityName: "тега")
         }
+
+        #if os(iOS)
+        for habit in backup.habits ?? [] {
+            try validateTitle(habit.title, entityName: "привычки")
+        }
+        #endif
 
         for task in backup.tasks {
             try validateTitle(task.title, entityName: "задачи")
