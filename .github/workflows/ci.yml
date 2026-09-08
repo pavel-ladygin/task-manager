@@ -51,8 +51,8 @@ jobs:
           docker run --detach --name planner-sync-ci \
             --publish 8443:8443 \
             --volume "$RUNNER_TEMP/planner-sync-certs:/certs:ro" \
-            --env PLANNER_SYNC_TOKEN=ci-sync-token \
-            --env PLANNER_WIDGET_TOKEN=ci-widget-token \
+            --env PLANNER_SYNC_TOKEN=0123456789abcdef0123456789abcdef \
+            --env PLANNER_WIDGET_TOKEN=fedcba9876543210fedcba9876543210 \
             --env PLANNER_ADDR=:8443 \
             --env PLANNER_TLS_CERT=/certs/planner.crt \
             --env PLANNER_TLS_KEY=/certs/planner.key \
