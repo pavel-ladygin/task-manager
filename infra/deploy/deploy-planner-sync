@@ -1,0 +1,85 @@
+#!/bin/sh
+set -eu
+
+# This file is installed as /usr/local/sbin/deploy-planner-sync by root.
+# Docker credentials and the .env file must remain readable by root only.
+APP_DIR=${APP_DIR:-/opt/planner-sync}
+COMPOSE_FILE=${COMPOSE_FILE:-$APP_DIR/compose.production.yml}
+STATE_FILE=${STATE_FILE:-/var/lib/planner-sync/active-tag}
+HEALTH_URL=${HEALTH_URL:-https://127.0.0.1/health}
+HEALTH_ATTEMPTS=${HEALTH_ATTEMPTS:-30}
+
+die() {
+  echo "deploy-planner-sync: $*" >&2
+  exit 1
+}
+
+read_requested_tag() {
+  if [ "$#" -eq 1 ]; then
+    printf '%s\n' "$1"
+    return
+  fi
+  [ "$#" -eq 0 ] || die "usage: deploy-planner-sync <40-hex-commit-sha>"
+  command=${SSH_ORIGINAL_COMMAND:-}
+  case "$command" in
+    "deploy-planner-sync "*) printf '%s\n' "${command#deploy-planner-sync }" ;;
+    *) die "only 'deploy-planner-sync <40-hex-commit-sha>' is allowed" ;;
+  esac
+}
+
+requested_tag=$(read_requested_tag "$@")
+case "$requested_tag" in
+  *[!0123456789abcdefABCDEF]*) die "tag must be a 40-character hexadecimal commit SHA" ;;
+esac
+# POSIX shell patterns cannot express an exact 40-character positive match
+# portably, so reject anything whose length is not exactly 40 as well.
+[ "$(printf '%s' "$requested_tag" | wc -c | tr -d ' ')" -eq 40 ] || die "tag must be a 40-character hexadecimal commit SHA"
+
+[ "$(id -u)" -eq 0 ] || die "must run as root"
+[ -f "$COMPOSE_FILE" ] || die "missing compose file: $COMPOSE_FILE"
+[ -f "$APP_DIR/.env" ] || die "missing secrets file: $APP_DIR/.env"
+mkdir -p "$(dirname "$STATE_FILE")"
+
+previous_tag=
+if [ -s "$STATE_FILE" ]; then
+  previous_tag=$(head -n 1 "$STATE_FILE")
+  case "$previous_tag" in
+    *[!0123456789abcdefABCDEF]*) previous_tag= ;;
+  esac
+  [ "$(printf '%s' "$previous_tag" | wc -c | tr -d ' ')" -eq 40 ] || previous_tag=
+fi
+
+compose() {
+  image_tag=$1
+  shift
+  IMAGE_TAG="$image_tag" docker compose --env-file "$APP_DIR/.env" -f "$COMPOSE_FILE" "$@"
+}
+
+wait_for_health() {
+  attempt=1
+  while [ "$attempt" -le "$HEALTH_ATTEMPTS" ]; do
+    if curl --fail --silent --show-error --insecure --max-time 5 "$HEALTH_URL" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 2
+    attempt=$((attempt + 1))
+  done
+  return 1
+}
+
+rollback() {
+  [ -n "$previous_tag" ] || die "deployment failed and no previous image tag is recorded"
+  echo "deployment failed; rolling back to previous image" >&2
+  compose "$previous_tag" up -d --no-build --remove-orphans
+  wait_for_health || die "rollback failed health check"
+  printf '%s\n' "$previous_tag" >"$STATE_FILE"
+  die "deployment failed; rollback completed"
+}
+
+echo "pulling image for commit $requested_tag"
+compose "$requested_tag" pull || rollback
+compose "$requested_tag" up -d --no-build --remove-orphans || rollback
+wait_for_health || rollback
+printf '%s\n' "$requested_tag" >"$STATE_FILE"
+chmod 600 "$STATE_FILE"
+echo "deployed $requested_tag"
