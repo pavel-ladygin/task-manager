@@ -390,12 +390,25 @@ enum PlannerSchemaV2: VersionedSchema {
 }
 
 enum PlannerMigrationPlan: SchemaMigrationPlan {
-    static var schemas: [any VersionedSchema.Type] { [PlannerSchemaV1.self, PlannerSchemaV2.self] }
+    static var schemas: [any VersionedSchema.Type] { [PlannerSchemaV1.self, PlannerSchemaV2.self, PlannerSchemaV3.self] }
     static var stages: [MigrationStage] {
-        [.lightweight(fromVersion: PlannerSchemaV1.self, toVersion: PlannerSchemaV2.self)]
+        [
+            .lightweight(fromVersion: PlannerSchemaV1.self, toVersion: PlannerSchemaV2.self),
+            .lightweight(fromVersion: PlannerSchemaV2.self, toVersion: PlannerSchemaV3.self)
+        ]
     }
 }
 
 enum PlannerSchema {
-    static let models = PlannerSchemaV2.models
+    static let models = PlannerSchemaV3.models
+}
+
+/// The third schema adds calendar-only events. Existing task and project model
+/// types intentionally remain the V2 types so old stores can be migrated
+/// lightweight without rewriting their relationships.
+enum PlannerSchemaV3: VersionedSchema {
+    static let versionIdentifier = Schema.Version(3, 0, 0)
+    static var models: [any PersistentModel.Type] {
+        PlannerSchemaV2.models + [CalendarEvent.self, CalendarEventException.self]
+    }
 }

@@ -1,0 +1,2 @@
+typealias PlannerCalendarEvent = CalendarEvent
+typealias PlannerCalendarEventException = CalendarEventException

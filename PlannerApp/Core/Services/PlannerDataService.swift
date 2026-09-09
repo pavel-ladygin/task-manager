@@ -453,6 +453,21 @@ enum PlannerDataService {
             task.updatedAt = .now
             try SyncService.enqueueUpsert(task: task, context: context)
         }
+        // Calendar events are independent from tasks; deleting a project only
+        // removes their project colour/link and keeps the schedule entries.
+        let affectedEvents = try context.fetch(FetchDescriptor<CalendarEvent>()).filter { $0.project?.id == project.id }
+        for event in affectedEvents {
+            event.project = nil
+            event.updatedAt = .now
+            try SyncService.enqueueUpsert(event: event, context: context)
+        }
+        let affectedExceptions = try context.fetch(FetchDescriptor<CalendarEventException>()).filter { $0.project?.id == project.id }
+        for exception in affectedExceptions {
+            exception.project = nil
+            exception.projectOverrideSet = true
+            exception.updatedAt = .now
+            try SyncService.enqueueUpsert(exception: exception, context: context)
+        }
         try SyncService.enqueueDelete(type: .project, entityID: project.id, context: context)
         context.delete(project)
         try context.save()

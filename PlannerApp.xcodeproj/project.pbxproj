@@ -45,6 +45,10 @@
 		10000000000000000000012A /* ProjectColorPreset.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000002A /* ProjectColorPreset.swift */; };
 		10000000000000000000012B /* TaskEditorSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000002B /* TaskEditorSession.swift */; };
 		10000000000000000000012C /* TaskVoiceInputController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000002C /* TaskVoiceInputController.swift */; };
+		100000000000000000000131 /* CalendarEvent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000002D /* CalendarEvent.swift */; };
+		100000000000000000000132 /* CalendarEventAliases.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000002E /* CalendarEventAliases.swift */; };
+		100000000000000000000133 /* CalendarEventService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000002F /* CalendarEventService.swift */; };
+		100000000000000000000134 /* CalendarEventEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000035 /* CalendarEventEditorView.swift */; };
 		200000000000000000000101 /* TaskStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000001 /* TaskStatus.swift */; };
 		200000000000000000000102 /* Priority.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000002 /* Priority.swift */; };
 		200000000000000000000103 /* ProjectStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000003 /* ProjectStatus.swift */; };
@@ -85,6 +89,10 @@
 		20000000000000000000012C /* TaskVoiceInputController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000002C /* TaskVoiceInputController.swift */; };
 		20000000000000000000012F /* HabitStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000012D /* HabitStore.swift */; };
 		200000000000000000000130 /* HabitViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000012E /* HabitViews.swift */; };
+		200000000000000000000131 /* CalendarEvent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000002D /* CalendarEvent.swift */; };
+		200000000000000000000132 /* CalendarEventAliases.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000002E /* CalendarEventAliases.swift */; };
+		200000000000000000000133 /* CalendarEventService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000002F /* CalendarEventService.swift */; };
+		200000000000000000000134 /* CalendarEventEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000035 /* CalendarEventEditorView.swift */; };
 		300000000000000000000101 /* PlannerCoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 300000000000000000000001 /* PlannerCoreTests.swift */; };
 		400000000000000000000101 /* TodayWidgetSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 400000000000000000000001 /* TodayWidgetSnapshot.swift */; };
 		400000000000000000000103 /* PlannerTodayWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 400000000000000000000003 /* PlannerTodayWidget.swift */; };
@@ -168,6 +176,10 @@
 		10000000000000000000002C /* TaskVoiceInputController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskVoiceInputController.swift; sourceTree = "<group>"; };
 		10000000000000000000012D /* HabitStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Habits/HabitStore.swift; sourceTree = "<group>"; };
 		10000000000000000000012E /* HabitViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/Habits/HabitViews.swift; sourceTree = "<group>"; };
+		10000000000000000000002D /* CalendarEvent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarEvent.swift; sourceTree = "<group>"; };
+		10000000000000000000002E /* CalendarEventAliases.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarEventAliases.swift; sourceTree = "<group>"; };
+		10000000000000000000002F /* CalendarEventService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarEventService.swift; sourceTree = "<group>"; };
+		100000000000000000000035 /* CalendarEventEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerApp/Shared/CalendarEventEditorView.swift; sourceTree = SOURCE_ROOT; };
 		1000000000000000000000E0 /* PlannerApp-macOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "PlannerApp-macOS.entitlements"; sourceTree = "<group>"; };
 		1000000000000000000000E1 /* PlannerApp-iOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "PlannerApp-iOS.entitlements"; sourceTree = "<group>"; };
 		300000000000000000000001 /* PlannerCoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerCoreTests.swift; sourceTree = "<group>"; };
@@ -262,6 +274,8 @@
 				10000000000000000000001E /* TaskRecurrence.swift */,
 				10000000000000000000002A /* ProjectColorPreset.swift */,
 				100000000000000000000003 /* ProjectStatus.swift */,
+				10000000000000000000002D /* CalendarEvent.swift */,
+				10000000000000000000002E /* CalendarEventAliases.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -277,6 +291,7 @@
 				100000000000000000000012 /* CalendarService.swift */,
 				100000000000000000000013 /* BackupService.swift */,
 				100000000000000000000015 /* NotificationService.swift */,
+				10000000000000000000002F /* CalendarEventService.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -549,6 +564,10 @@
 				100000000000000000000115 /* NotificationService.swift in Sources */,
 				10000000000000000000012B /* TaskEditorSession.swift in Sources */,
 				10000000000000000000012C /* TaskVoiceInputController.swift in Sources */,
+				100000000000000000000131 /* CalendarEvent.swift in Sources */,
+				100000000000000000000132 /* CalendarEventAliases.swift in Sources */,
+				100000000000000000000133 /* CalendarEventService.swift in Sources */,
+				100000000000000000000134 /* CalendarEventEditorView.swift in Sources */,
 				100000000000000000000125 /* SyncDTO.swift in Sources */,
 				100000000000000000000126 /* SyncClient.swift in Sources */,
 				100000000000000000000127 /* SyncService.swift in Sources */,
@@ -597,6 +616,10 @@
 				20000000000000000000012C /* TaskVoiceInputController.swift in Sources */,
 				20000000000000000000012F /* HabitStore.swift in Sources */,
 				200000000000000000000130 /* HabitViews.swift in Sources */,
+				200000000000000000000131 /* CalendarEvent.swift in Sources */,
+				200000000000000000000132 /* CalendarEventAliases.swift in Sources */,
+				200000000000000000000133 /* CalendarEventService.swift in Sources */,
+				200000000000000000000134 /* CalendarEventEditorView.swift in Sources */,
 				200000000000000000000125 /* SyncDTO.swift in Sources */,
 				200000000000000000000126 /* SyncClient.swift in Sources */,
 				200000000000000000000127 /* SyncService.swift in Sources */,

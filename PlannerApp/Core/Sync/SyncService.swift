@@ -171,6 +171,16 @@ enum SyncService {
         try enqueue(payload: payload, context: context)
     }
 
+    static func enqueueUpsert(event: CalendarEvent, context: ModelContext) throws {
+        let payload = try localPayload(type: .calendarEvent, id: event.id.uuidString, dto: calendarEventDTO(event))
+        try enqueue(payload: payload, context: context)
+    }
+
+    static func enqueueUpsert(exception: CalendarEventException, context: ModelContext) throws {
+        let payload = try localPayload(type: .calendarEventException, id: exception.id.uuidString, dto: calendarEventExceptionDTO(exception))
+        try enqueue(payload: payload, context: context)
+    }
+
     static func enqueueDelete(type: SyncEntityType, entityID: UUID, context: ModelContext) throws {
         let rawID = entityID.uuidString
         let pending = try context.fetch(FetchDescriptor<SyncOutboxItem>()).filter {
@@ -276,6 +286,12 @@ enum SyncService {
         for task in try context.fetch(FetchDescriptor<PlannerTask>()) {
             result.append(try localPayload(type: .task, id: task.id.uuidString, dto: taskDTO(task)))
         }
+        for event in try context.fetch(FetchDescriptor<CalendarEvent>()) {
+            result.append(try localPayload(type: .calendarEvent, id: event.id.uuidString, dto: calendarEventDTO(event)))
+        }
+        for exception in try context.fetch(FetchDescriptor<CalendarEventException>()) {
+            result.append(try localPayload(type: .calendarEventException, id: exception.id.uuidString, dto: calendarEventExceptionDTO(exception)))
+        }
         return result
     }
 
@@ -352,11 +368,20 @@ enum SyncService {
         context: ModelContext,
         settings: AppSettings
     ) throws {
-        for change in changes where change.entityType != SyncEntityType.task.rawValue {
-            try apply(change: change, context: context, settings: settings)
+        let order: [SyncEntityType] = [.project, .tag, .settings, .calendarEvent, .calendarEventException, .task]
+        for type in order {
+            for change in changes where change.entityType == type.rawValue {
+                try apply(change: change, context: context, settings: settings)
+            }
         }
-        for change in changes where change.entityType == SyncEntityType.task.rawValue {
-            try apply(change: change, context: context, settings: settings)
+
+        let events = try context.fetch(FetchDescriptor<CalendarEvent>())
+        let exceptions = try context.fetch(FetchDescriptor<CalendarEventException>())
+        for event in events {
+            NotificationService.rescheduleNotifications(
+                for: event,
+                exceptions: exceptions.filter { $0.eventID == event.id }
+            )
         }
     }
 
@@ -374,6 +399,8 @@ enum SyncService {
         case .tag: try upsertTag(SyncClient.decoder.decode(TagBackupDTO.self, from: data), context: context)
         case .settings: applySettings(try SyncClient.decoder.decode(SettingsBackupDTO.self, from: data), settings: settings)
         case .task: try upsertTask(SyncClient.decoder.decode(TaskBackupDTO.self, from: data), context: context)
+        case .calendarEvent: try upsertCalendarEvent(SyncClient.decoder.decode(CalendarEventBackupDTO.self, from: data), context: context)
+        case .calendarEventException: try upsertCalendarEventException(SyncClient.decoder.decode(CalendarEventExceptionBackupDTO.self, from: data), context: context)
         }
         try updateState(
             typeRawValue: change.entityType,
@@ -395,6 +422,8 @@ enum SyncService {
         case .project:
             if let id = UUID(uuidString: entityID), let project = try context.fetch(FetchDescriptor<Project>()).first(where: { $0.id == id }) {
                 try context.fetch(FetchDescriptor<PlannerTask>()).filter { $0.project?.id == id }.forEach { $0.project = nil }
+                try context.fetch(FetchDescriptor<CalendarEvent>()).filter { $0.project?.id == id }.forEach { $0.project = nil }
+                try context.fetch(FetchDescriptor<CalendarEventException>()).filter { $0.project?.id == id }.forEach { $0.project = nil }
                 context.delete(project)
             }
         case .tag:
@@ -403,6 +432,18 @@ enum SyncService {
                 context.delete(tag)
             }
         case .settings: break
+        case .calendarEvent:
+            if let id = UUID(uuidString: entityID), let event = try context.fetch(FetchDescriptor<CalendarEvent>()).first(where: { $0.id == id }) {
+                NotificationService.cancelNotifications(for: event)
+                try context.fetch(FetchDescriptor<CalendarEventException>())
+                    .filter { $0.eventID == id }
+                    .forEach(context.delete)
+                context.delete(event)
+            }
+        case .calendarEventException:
+            if let id = UUID(uuidString: entityID), let exception = try context.fetch(FetchDescriptor<CalendarEventException>()).first(where: { $0.id == id }) {
+                context.delete(exception)
+            }
         }
     }
 
@@ -416,6 +457,10 @@ enum SyncService {
             if let settings = try context.fetch(FetchDescriptor<AppSettings>()).first {
                 applySettings(try SyncClient.decoder.decode(SettingsBackupDTO.self, from: data), settings: settings)
             }
+        case .calendarEvent:
+            try upsertCalendarEvent(SyncClient.decoder.decode(CalendarEventBackupDTO.self, from: data), context: context)
+        case .calendarEventException:
+            try upsertCalendarEventException(SyncClient.decoder.decode(CalendarEventExceptionBackupDTO.self, from: data), context: context)
         }
     }
 
@@ -447,6 +492,21 @@ enum SyncService {
                 deadline: dto.deadline, notes: dto.notes
             ))
         case .tag, .settings:
+            try applyLocalPayload(json, type: type, context: context)
+        case .calendarEvent:
+            let dto = try SyncClient.decoder.decode(CalendarEventBackupDTO.self, from: data)
+            context.insert(CalendarEvent(
+                id: UUID(), title: dto.title + " (конфликтная копия)", notes: dto.notes,
+                start: dto.start, end: dto.end,
+                timeZoneIdentifier: dto.timeZoneIdentifier,
+                recurrence: CalendarEventRecurrence(rawValue: dto.recurrenceRawValue) ?? .none,
+                recurrenceEndDate: dto.recurrenceEndDate,
+                reminder: CalendarEventReminder(rawValue: dto.reminderRawValue) ?? .fifteenMinutes,
+                project: try context.fetch(FetchDescriptor<Project>()).first { $0.id == dto.projectID }
+            ))
+        case .calendarEventException:
+            // An exception without its source event cannot be materialized safely.
+            // Keep the payload resolvable by applying it only when the source exists.
             try applyLocalPayload(json, type: type, context: context)
         }
     }
@@ -573,6 +633,79 @@ enum SyncService {
             color: project.colorPreset.rawValue, deadline: project.deadline, notes: project.notes,
             createdAt: project.createdAt, updatedAt: project.updatedAt
         )
+    }
+
+    private static func calendarEventDTO(_ event: CalendarEvent) -> CalendarEventBackupDTO {
+        CalendarEventBackupDTO(
+            id: event.id, title: event.title, notes: event.notes,
+            start: event.start, end: event.end,
+            timeZoneIdentifier: event.timeZoneIdentifier,
+            recurrenceRawValue: event.recurrenceRawValue,
+            recurrenceEndDate: event.recurrenceEndDate,
+            projectID: event.project?.id, reminderRawValue: event.reminderRawValue,
+            createdAt: event.createdAt, updatedAt: event.updatedAt
+        )
+    }
+
+    private static func calendarEventExceptionDTO(_ exception: CalendarEventException) -> CalendarEventExceptionBackupDTO {
+        CalendarEventExceptionBackupDTO(
+            id: exception.id, eventID: exception.eventID,
+            occurrenceDate: exception.occurrenceDate, isDeleted: exception.isSkipped,
+            titleOverride: exception.titleOverride, notesOverride: exception.notesOverride,
+            startOverride: exception.startOverride, endOverride: exception.endOverride,
+            timeZoneIdentifierOverride: exception.timeZoneIdentifierOverride,
+            reminderRawValueOverride: exception.reminderRawValueOverride,
+            projectOverrideSet: exception.projectOverrideSet,
+            projectID: exception.project?.id,
+            createdAt: exception.createdAt, updatedAt: exception.updatedAt
+        )
+    }
+
+    private static func upsertCalendarEvent(_ dto: CalendarEventBackupDTO, context: ModelContext) throws {
+        let project = dto.projectID.flatMap { id in
+            (try? context.fetch(FetchDescriptor<Project>()))?.first { $0.id == id }
+        }
+        let event = try context.fetch(FetchDescriptor<CalendarEvent>()).first { $0.id == dto.id }
+            ?? CalendarEvent(id: dto.id, title: dto.title, notes: dto.notes,
+                             start: dto.start, end: dto.end,
+                             timeZoneIdentifier: dto.timeZoneIdentifier,
+                             recurrence: CalendarEventRecurrence(rawValue: dto.recurrenceRawValue) ?? .none,
+                             recurrenceEndDate: dto.recurrenceEndDate,
+                             reminder: CalendarEventReminder(rawValue: dto.reminderRawValue) ?? .fifteenMinutes, project: project,
+                             createdAt: dto.createdAt, updatedAt: dto.updatedAt)
+        if event.id != dto.id { event.id = dto.id; context.insert(event) }
+        event.title = dto.title; event.notes = dto.notes
+        event.start = dto.start; event.end = dto.end
+        event.timeZoneIdentifier = dto.timeZoneIdentifier
+        event.recurrenceRawValue = dto.recurrenceRawValue
+        event.recurrenceEndDate = dto.recurrenceEndDate
+        event.project = project; event.reminderRawValue = dto.reminderRawValue
+        event.createdAt = dto.createdAt; event.updatedAt = dto.updatedAt
+    }
+
+    private static func upsertCalendarEventException(_ dto: CalendarEventExceptionBackupDTO, context: ModelContext) throws {
+        guard let event = try context.fetch(FetchDescriptor<CalendarEvent>()).first(where: { $0.id == dto.eventID }) else { return }
+        let project = dto.projectID.flatMap { id in
+            (try? context.fetch(FetchDescriptor<Project>()))?.first { $0.id == id }
+        }
+        let exception = try context.fetch(FetchDescriptor<CalendarEventException>()).first { $0.id == dto.id }
+            ?? CalendarEventException(id: dto.id, eventID: event.id, occurrenceDate: dto.occurrenceDate,
+                                      isDeleted: dto.isDeleted, titleOverride: dto.titleOverride, notesOverride: dto.notesOverride,
+                                      startOverride: dto.startOverride, endOverride: dto.endOverride,
+                                      timeZoneIdentifierOverride: dto.timeZoneIdentifierOverride,
+                                      reminderOverride: dto.reminderRawValueOverride.flatMap(CalendarEventReminder.init(rawValue:)),
+                                      projectOverrideSet: dto.projectOverrideSet ?? false,
+                                      project: project,
+                                      createdAt: dto.createdAt, updatedAt: dto.updatedAt)
+        if exception.id != dto.id { exception.id = dto.id; context.insert(exception) }
+        exception.eventID = event.id; exception.occurrenceDate = dto.occurrenceDate
+        exception.isSkipped = dto.isDeleted; exception.titleOverride = dto.titleOverride; exception.notesOverride = dto.notesOverride
+        exception.startOverride = dto.startOverride; exception.endOverride = dto.endOverride
+        exception.timeZoneIdentifierOverride = dto.timeZoneIdentifierOverride
+        exception.reminderRawValueOverride = dto.reminderRawValueOverride
+        exception.projectOverrideSet = dto.projectOverrideSet ?? false
+        exception.project = project
+        exception.createdAt = dto.createdAt; exception.updatedAt = dto.updatedAt
     }
     private static func tagDTO(_ tag: Tag) -> TagBackupDTO {
         TagBackupDTO(id: tag.id, title: tag.title, createdAt: tag.createdAt)
