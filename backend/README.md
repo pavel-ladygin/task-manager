@@ -53,6 +53,25 @@ is newer than the binary supports.
 Keep the database volume and `migration-backups` in regular infrastructure
 backups as well; the automatic copy only protects the migration boundary.
 
+## One-time BMSTU schedule import
+
+The schedule importer downloads the BMSTU ICS feed, converts each class into a
+`calendarEvent`, and writes it through the same transactional SQLite change log
+used by app synchronization. It does not create tasks, kanban cards, or widget
+entries. Re-running it is safe: imported records have stable IDs and are
+recognized as already applied.
+
+After deploying an image built from this revision, run on the VPS:
+
+```bash
+install -o root -g root -m 0750 backend/scripts/import-bmstu-schedule.sh /opt/planner-sync/import-bmstu-schedule.sh
+/opt/planner-sync/import-bmstu-schedule.sh
+```
+
+The default source is the supplied ИУ1-72Б feed. To import another compatible
+ICS URL, set `BMSTU_ICS_URL` for the command. Classes are stored in
+`Europe/Moscow`, with no local notification and no project assignment.
+
 ## Telegram quick capture
 
 The same process can accept private Telegram messages, transcribe short voice

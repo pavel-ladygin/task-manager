@@ -2,6 +2,8 @@ import Foundation
 
 enum SyncEntityType: String, Codable, CaseIterable {
     case task, project, tag, settings
+    case calendarEvent
+    case calendarEventException
 }
 
 enum SyncMutationOperation: String, Codable {

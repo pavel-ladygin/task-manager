@@ -11,6 +11,7 @@ private enum IOSCalendarMode: String, CaseIterable, Identifiable {
 struct IOSCalendarView: View {
     let week: CalendarWeek
     let placements: [CalendarTaskPlacement]
+    let eventOccurrences: [CalendarEventOccurrence]
     @Binding var searchText: String
     let isCurrentWeek: Bool
     let goToPreviousWeek: () -> Void
@@ -20,6 +21,10 @@ struct IOSCalendarView: View {
     let resizePlacement: (CalendarTaskPlacement, Date) -> Void
     let openTask: (PlannerTask) -> Void
     let completeTask: (PlannerTask) -> Void
+    let openEvent: (CalendarEventOccurrence) -> Void
+    let moveEvent: (CalendarEventOccurrence, Date) -> Void
+    let resizeEvent: (CalendarEventOccurrence, Date) -> Void
+    let createEvent: (Date) -> Void
 
     @AppStorage("ios.calendar.mode") private var modeRawValue = IOSCalendarMode.week.rawValue
     @State private var selectedDayIndex = 0
@@ -58,13 +63,15 @@ struct IOSCalendarView: View {
             VStack(alignment: .leading, spacing: 12) {
                 weekHeader
                 ForEach(week.days) { day in
-                    IOSCalendarDaySection(
+                IOSCalendarDaySection(
                         day: day,
                         placements: placementsForDay(day),
                         allPlacements: placements,
                         openTask: openTask,
                         movePlacement: movePlacement,
                         completeTask: completeTask
+                        , eventOccurrences: eventOccurrencesForDay(day), openEvent: openEvent,
+                        moveEvent: moveEvent, createEvent: createEvent
                     )
                 }
             }
@@ -84,7 +91,10 @@ struct IOSCalendarView: View {
                 openTask: openTask,
                 movePlacement: movePlacement,
                 resizePlacement: resizePlacement,
-                completeTask: completeTask
+                completeTask: completeTask,
+                eventOccurrences: eventOccurrencesForDay(day),
+                openEvent: openEvent, moveEvent: moveEvent, resizeEvent: resizeEvent,
+                createEvent: createEvent
             )
         }
     }
@@ -111,6 +121,9 @@ struct IOSCalendarView: View {
     private func placementsForDay(_ day: CalendarDay) -> [CalendarTaskPlacement] {
         placements.filter { $0.day.id == day.id }
     }
+    private func eventOccurrencesForDay(_ day: CalendarDay) -> [CalendarEventOccurrence] {
+        eventOccurrences.filter { Calendar.current.isDate($0.start, inSameDayAs: day.date) }
+    }
     private func selectTodayIfVisible() {
         if let index = week.days.firstIndex(where: { Calendar.current.isDateInToday($0.date) }) { selectedDayIndex = index }
     }
@@ -129,6 +142,10 @@ private struct IOSCalendarDaySection: View {
     let openTask: (PlannerTask) -> Void
     let movePlacement: (CalendarTaskPlacement, Date) -> Void
     let completeTask: (PlannerTask) -> Void
+    let eventOccurrences: [CalendarEventOccurrence]
+    let openEvent: (CalendarEventOccurrence) -> Void
+    let moveEvent: (CalendarEventOccurrence, Date) -> Void
+    let createEvent: (Date) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -152,6 +169,9 @@ private struct IOSCalendarDaySection: View {
                     )
                 }
             }
+            ForEach(eventOccurrences) { occurrence in
+                IOSCalendarEventRow(occurrence: occurrence, openEvent: { openEvent(occurrence) })
+            }
         }
         .padding(12)
         .background(PlannerTheme.panelBackground, in: RoundedRectangle(cornerRadius: 8))
@@ -161,6 +181,7 @@ private struct IOSCalendarDaySection: View {
             }
             return true
         }
+        .onTapGesture(count: 2) { createEvent(day.date) }
     }
 }
 
@@ -175,6 +196,11 @@ private struct IOSCalendarDayTimeline: View {
     let movePlacement: (CalendarTaskPlacement, Date) -> Void
     let resizePlacement: (CalendarTaskPlacement, Date) -> Void
     let completeTask: (PlannerTask) -> Void
+    let eventOccurrences: [CalendarEventOccurrence]
+    let openEvent: (CalendarEventOccurrence) -> Void
+    let moveEvent: (CalendarEventOccurrence, Date) -> Void
+    let resizeEvent: (CalendarEventOccurrence, Date) -> Void
+    let createEvent: (Date) -> Void
 
     private let slotHeight: CGFloat = 32
     private let axisWidth: CGFloat = 52
@@ -231,23 +257,32 @@ private struct IOSCalendarDayTimeline: View {
                                         resizePlacement: resizePlacement
                                     )
                                     .frame(width: max(54, laneWidth - 3), height: max(28, CGFloat(layout.placement.durationMinutes) / 30 * slotHeight - 2))
-                                    .offset(
-                                        x: 4 + CGFloat(layout.lane) * laneWidth,
-                                        y: CGFloat(layout.placement.startMinute) / 30 * slotHeight
+                                    .offset(x: 4 + CGFloat(layout.lane) * laneWidth,
+                                            y: CGFloat(layout.placement.startMinute) / 30 * slotHeight)
+                                }
+                                ForEach(eventOccurrences) { occurrence in
+                                    IOSCalendarTimelineEventBlock(
+                                        occurrence: occurrence,
+                                        day: day,
+                                        slotHeight: slotHeight,
+                                        openEvent: { openEvent(occurrence) },
+                                        moveEvent: { moveEvent(occurrence, $0) },
+                                        resizeEvent: { resizeEvent(occurrence, $0) }
                                     )
+                                    .frame(width: max(90, geometry.size.width * 0.55),
+                                           height: max(28, CGFloat(occurrence.end.timeIntervalSince(occurrence.start) / 60) / 30 * slotHeight - 2))
+                                    .offset(x: geometry.size.width * 0.43,
+                                            y: CGFloat(Calendar.current.component(.hour, from: occurrence.start) * 60 + Calendar.current.component(.minute, from: occurrence.start)) / 30 * slotHeight)
                                 }
                             }
                             .contentShape(Rectangle())
-                            .onDrop(
-                                of: [.plainText],
-                                delegate: IOSCalendarTimelineDropDelegate(
-                                    day: day,
-                                    placements: allPlacements,
-                                    slotHeight: slotHeight,
-                                    timelineHeight: timelineHeight,
-                                    movePlacement: movePlacement
-                                )
-                            )
+                            .gesture(SpatialTapGesture(count: 2).onEnded { value in
+                                let slot = min(47, max(0, Int(value.location.y / slotHeight)))
+                                createEvent(CalendarService.date(for: day, hour: slot / 2, minute: slot.isMultiple(of: 2) ? 0 : 30))
+                            })
+                            .onDrop(of: [.plainText], delegate: IOSCalendarTimelineDropDelegate(
+                                day: day, placements: allPlacements, slotHeight: slotHeight,
+                                timelineHeight: timelineHeight, movePlacement: movePlacement))
                         }
                         .frame(height: timelineHeight)
                     }
@@ -351,6 +386,76 @@ private struct IOSCalendarPlacementRow: View {
     }
     private var timeText: String {
         placement.isAllDay ? "Весь день" : String(format: "%02d:%02d", placement.startMinute / 60, placement.startMinute % 60)
+    }
+}
+
+private struct IOSCalendarEventRow: View {
+    let occurrence: CalendarEventOccurrence
+    let openEvent: () -> Void
+
+    var body: some View {
+        Button(action: openEvent) {
+            HStack(spacing: 10) {
+                Image(systemName: "calendar.badge.clock")
+                    .foregroundStyle(PlannerTheme.accent)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(occurrence.title).fontWeight(.medium).foregroundStyle(.primary)
+                    Text("\(timeText(occurrence.start))–\(timeText(occurrence.end)) · расписание")
+                        .font(.caption).foregroundStyle(PlannerTheme.secondaryText)
+                }
+                Spacer()
+                if occurrence.project != nil { Image(systemName: "folder.fill").font(.caption) }
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(PlannerTheme.accentSoft, in: RoundedRectangle(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func timeText(_ date: Date) -> String { date.formatted(date: .omitted, time: .shortened) }
+}
+
+private struct IOSCalendarTimelineEventBlock: View {
+    let occurrence: CalendarEventOccurrence
+    let day: CalendarDay
+    let slotHeight: CGFloat
+    let openEvent: () -> Void
+    let moveEvent: (Date) -> Void
+    let resizeEvent: (Date) -> Void
+
+    var body: some View {
+        Button(action: openEvent) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(occurrence.title).font(.caption).fontWeight(.semibold).lineLimit(1)
+                Text("\(occurrence.start.formatted(date: .omitted, time: .shortened))–\(occurrence.end.formatted(date: .omitted, time: .shortened))")
+                    .font(.caption2).lineLimit(1)
+            }
+            .padding(5)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .background(eventColor.opacity(0.24), in: RoundedRectangle(cornerRadius: 7))
+            .overlay(RoundedRectangle(cornerRadius: 7).stroke(eventColor.opacity(0.8), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .simultaneousGesture(DragGesture(minimumDistance: 10).onEnded { value in
+            let slots = Int((value.translation.height / slotHeight).rounded())
+            guard slots != 0 else { return }
+            moveEvent(occurrence.start.addingTimeInterval(Double(slots * 30 * 60)))
+        })
+        .overlay(alignment: .bottom) {
+            Capsule().fill(eventColor).frame(width: 36, height: 5).padding(.bottom, 3)
+                .gesture(DragGesture(minimumDistance: 5).onEnded { value in
+                    let slots = Int((value.translation.height / slotHeight).rounded())
+                    guard slots != 0 else { return }
+                    let proposed = occurrence.end.addingTimeInterval(Double(slots * 30 * 60))
+                    if proposed > occurrence.start { resizeEvent(proposed) }
+                })
+        }
+    }
+
+    private var eventColor: Color {
+        guard let preset = occurrence.project?.colorPreset else { return PlannerTheme.accent }
+        return PlannerTheme.projectAccent(preset)
     }
 }
 

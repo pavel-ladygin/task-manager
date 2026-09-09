@@ -55,6 +55,51 @@ enum NotificationService {
         scheduleNotifications(for: task, settings: settings)
     }
 
+    @MainActor static func rescheduleNotifications(
+        for event: CalendarEvent,
+        exceptions: [CalendarEventException],
+        now: Date = .now
+    ) {
+        cancelNotifications(for: event)
+        guard event.reminder != .none else { return }
+        let horizon = Calendar.current.date(byAdding: .year, value: 1, to: now) ?? now.addingTimeInterval(31_536_000)
+        let occurrences = CalendarEventService.occurrences(
+            for: event,
+            from: now.addingTimeInterval(-3_600),
+            to: horizon,
+            exceptions: exceptions
+        ).filter { $0.reminder != .none }.prefix(12)
+        for occurrence in occurrences {
+            let triggerDate = Calendar.current.date(
+                byAdding: .minute,
+                value: -max(0, occurrence.reminder.rawValue),
+                to: occurrence.start
+            ) ?? occurrence.start
+            guard triggerDate > now else { continue }
+            let content = UNMutableNotificationContent()
+            content.title = "Событие расписания"
+            content.body = occurrence.title
+            content.sound = .default
+            let components = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: triggerDate)
+            let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
+            UNUserNotificationCenter.current().add(UNNotificationRequest(
+                identifier: notificationIdentifier(for: occurrence),
+                content: content,
+                trigger: trigger
+            ))
+        }
+    }
+
+    static func cancelNotifications(for event: CalendarEvent) {
+        let center = UNUserNotificationCenter.current()
+        center.getPendingNotificationRequests { requests in
+            let prefix = "planner.event.\(event.id.uuidString)."
+            center.removePendingNotificationRequests(
+                withIdentifiers: requests.map(\.identifier).filter { $0.hasPrefix(prefix) }
+            )
+        }
+    }
+
     private static func scheduleNotification(
         for task: PlannerTask,
         date: Date,
@@ -111,6 +156,10 @@ enum NotificationService {
 
     private static func notificationIdentifier(for task: PlannerTask, kind: String) -> String {
         "planner.task.\(task.id.uuidString).\(kind)"
+    }
+
+    private static func notificationIdentifier(for occurrence: CalendarEventOccurrence) -> String {
+        "planner.event.\(occurrence.eventID.uuidString).\(Int(occurrence.occurrenceDate.timeIntervalSince1970))"
     }
 
     private static func description(for status: UNAuthorizationStatus) -> String {

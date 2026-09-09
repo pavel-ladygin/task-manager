@@ -42,7 +42,7 @@ final class PlannerStoreBootstrap: ObservableObject {
     @Published private(set) var latestBackupURL: URL?
     @Published private(set) var diagnosticText = ""
 
-    private let schema = Schema(versionedSchema: PlannerSchemaV2.self)
+    private let schema = Schema(versionedSchema: PlannerSchemaV3.self)
     private lazy var configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 
     init() { load() }
@@ -75,6 +75,14 @@ final class PlannerStoreBootstrap: ObservableObject {
             )
             _ = try PlannerDataService.ensureAppSettings(context: candidate.mainContext)
             try PlannerStoreValidator.validate(candidate)
+            let events = try candidate.mainContext.fetch(FetchDescriptor<CalendarEvent>())
+            let exceptions = try candidate.mainContext.fetch(FetchDescriptor<CalendarEventException>())
+            for event in events {
+                NotificationService.rescheduleNotifications(
+                    for: event,
+                    exceptions: exceptions.filter { $0.eventID == event.id }
+                )
+            }
             container = candidate
         } catch {
             latestBackupURL = PlannerStoreBackup.latestBackup()
@@ -141,12 +149,16 @@ private enum PlannerStoreValidator {
         let checklist = try context.fetch(FetchDescriptor<ChecklistItem>())
         let settings = try context.fetch(FetchDescriptor<AppSettings>())
         let outbox = try context.fetch(FetchDescriptor<SyncOutboxItem>())
+        let events = try context.fetch(FetchDescriptor<CalendarEvent>())
+        let eventExceptions = try context.fetch(FetchDescriptor<CalendarEventException>())
 
         try requireUnique(tasks.map(\.id), name: "задач")
         try requireUnique(projects.map(\.id), name: "проектов")
         try requireUnique(tags.map(\.id), name: "тегов")
         try requireUnique(checklist.map(\.id), name: "пунктов чеклиста")
         try requireUnique(outbox.map(\.mutationID), name: "sync-мутаций")
+        try requireUnique(events.map(\.id), name: "календарных событий")
+        try requireUnique(eventExceptions.map(\.id), name: "исключений календаря")
         guard settings.count == 1 else {
             throw PlannerStoreValidationError.invalid("ожидался один объект настроек, найдено \(settings.count)")
         }

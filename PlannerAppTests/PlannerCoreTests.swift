@@ -339,6 +339,49 @@ final class PlannerCoreTests: XCTestCase {
     }
 
     @MainActor
+    func testWeeklyCalendarEventProducesVirtualOccurrencesWithoutTasks() throws {
+        let container = try inMemoryContainer()
+        let context = container.mainContext
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let monday = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 9, day: 7, hour: 15)))
+        let event = try CalendarEventService.create(title: "Физкультура", start: monday,
+            end: monday.addingTimeInterval(7_200), timeZoneIdentifier: calendar.timeZone.identifier,
+            recurrence: .weekly, reminder: .none, context: context)
+
+        let occurrences = CalendarEventService.occurrences(for: event, from: monday,
+            to: try XCTUnwrap(calendar.date(byAdding: .day, value: 22, to: monday)), calendar: calendar)
+        XCTAssertEqual(occurrences.count, 4)
+        XCTAssertTrue(occurrences.allSatisfy { calendar.component(.weekday, from: $0.start) == 2 })
+        XCTAssertTrue(occurrences.allSatisfy { calendar.component(.hour, from: $0.start) == 15 })
+        XCTAssertTrue(try context.fetch(FetchDescriptor<PlannerTask>()).isEmpty)
+    }
+
+    @MainActor
+    func testCalendarEventExceptionMovesAndDeletesSingleOccurrences() throws {
+        let container = try inMemoryContainer()
+        let context = container.mainContext
+        let start = Date(timeIntervalSince1970: 1_800_000_000)
+        let event = try CalendarEventService.create(title: "Training", start: start,
+            end: start.addingTimeInterval(3_600), recurrence: .daily, reminder: .none, context: context)
+        let second = try XCTUnwrap(RecurrenceService.occurrenceDate(recurrence: .daily, anchor: start, sequence: 1))
+        try CalendarEventService.updateOccurrence(of: event, on: second,
+            start: second.addingTimeInterval(3_600), end: second.addingTimeInterval(7_200), context: context)
+        let third = try XCTUnwrap(RecurrenceService.occurrenceDate(recurrence: .daily, anchor: start, sequence: 2))
+        try CalendarEventService.deleteOccurrence(of: event, on: third, context: context)
+
+        let storedExceptions = try context.fetch(FetchDescriptor<CalendarEventException>())
+        XCTAssertEqual(storedExceptions.count, 2)
+        XCTAssertTrue(storedExceptions.allSatisfy { $0.eventID == event.id })
+        XCTAssertTrue(storedExceptions.contains { $0.isSkipped })
+        let occurrences = CalendarEventService.occurrences(for: event, from: start,
+            to: start.addingTimeInterval(4 * 86_400), exceptions: storedExceptions)
+        XCTAssertEqual(occurrences.count, 3)
+        XCTAssertEqual(occurrences.first(where: { $0.occurrenceDate == second })?.start, second.addingTimeInterval(3_600))
+        XCTAssertFalse(occurrences.contains { $0.occurrenceDate == third })
+    }
+
+    @MainActor
     func testV1StoreMigratesToV2() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -355,7 +398,7 @@ final class PlannerCoreTests: XCTestCase {
             try container.mainContext.save()
         }
 
-        let schema = Schema(versionedSchema: PlannerSchemaV2.self)
+        let schema = Schema(versionedSchema: PlannerSchemaV3.self)
         let configuration = ModelConfiguration("V2", schema: schema, url: url)
         let migrated = try ModelContainer(for: schema, migrationPlan: PlannerMigrationPlan.self, configurations: [configuration])
         let tasks = try migrated.mainContext.fetch(FetchDescriptor<PlannerTask>())
@@ -395,7 +438,7 @@ final class PlannerCoreTests: XCTestCase {
 
     @MainActor
     private func inMemoryContainer() throws -> ModelContainer {
-        let schema = Schema(versionedSchema: PlannerSchemaV2.self)
+        let schema = Schema(versionedSchema: PlannerSchemaV3.self)
         return try ModelContainer(
             for: schema,
             migrationPlan: PlannerMigrationPlan.self,

@@ -1,2 +1,6 @@
 # Local credentials and machine-specific deployment configuration.
 .local/
+build/
+DerivedData/
+*.xcuserstate
+.DS_Store

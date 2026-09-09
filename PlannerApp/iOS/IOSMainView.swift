@@ -2,12 +2,21 @@ import SwiftData
 import SwiftUI
 
 #if os(iOS)
+private enum IOSCalendarEventAction {
+    case save(CalendarEvent, CalendarEventOccurrence, CalendarEventEditorValues)
+    case delete(CalendarEvent, CalendarEventOccurrence)
+    case move(CalendarEvent, CalendarEventOccurrence, Date)
+    case resize(CalendarEvent, CalendarEventOccurrence, Date)
+}
+
 struct IOSMainView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var scenePhase
     @Query(sort: \PlannerTask.createdAt, order: .forward) private var tasks: [PlannerTask]
     @Query(sort: \Project.createdAt, order: .forward) private var projects: [Project]
     @Query(sort: \AppSettings.createdAt, order: .forward) private var appSettings: [AppSettings]
+    @Query(sort: \CalendarEvent.start, order: .forward) private var calendarEvents: [CalendarEvent]
+    @Query private var calendarEventExceptions: [CalendarEventException]
 
     @State private var searchText = ""
     @State private var errorMessage: String?
@@ -20,6 +29,11 @@ struct IOSMainView: View {
     @State private var activeSyncPollingTask: Task<Void, Never>?
     @State private var isAutoSyncing = false
     @State private var taskEditorSession: TaskEditorSession?
+    @State private var calendarEventEditorEvent: CalendarEvent?
+    @State private var calendarEventEditorOccurrence: CalendarEventOccurrence?
+    @State private var calendarEventEditorStart = Date.now
+    @State private var isCalendarEventEditorPresented = false
+    @State private var pendingCalendarEventAction: IOSCalendarEventAction?
     @StateObject private var voiceInputController = TaskVoiceInputController()
 
     private var currentSettings: AppSettings? {
@@ -78,6 +92,7 @@ struct IOSMainView: View {
                         searchText: searchText,
                         week: week
                     ),
+                    eventOccurrences: calendarEventOccurrences(for: week),
                     searchText: $searchText,
                     isCurrentWeek: isCurrentCalendarWeek,
                     goToPreviousWeek: { moveSelectedCalendarWeek(by: -1) },
@@ -86,7 +101,27 @@ struct IOSMainView: View {
                     movePlacement: moveCalendarPlacement,
                     resizePlacement: resizeCalendarPlacement,
                     openTask: openTaskEditor,
-                    completeTask: completeTask
+                    completeTask: completeTask,
+                    openEvent: { occurrence in
+                        calendarEventEditorEvent = calendarEvents.first { $0.id == occurrence.eventID }
+                        calendarEventEditorOccurrence = occurrence
+                        calendarEventEditorStart = occurrence.start
+                        isCalendarEventEditorPresented = true
+                    },
+                    moveEvent: { occurrence, date in
+                        guard let event = calendarEvents.first(where: { $0.id == occurrence.eventID }) else { return }
+                        pendingCalendarEventAction = .move(event, occurrence, date)
+                    },
+                    resizeEvent: { occurrence, date in
+                        guard let event = calendarEvents.first(where: { $0.id == occurrence.eventID }) else { return }
+                        pendingCalendarEventAction = .resize(event, occurrence, date)
+                    },
+                    createEvent: { date in
+                        calendarEventEditorEvent = nil
+                        calendarEventEditorOccurrence = nil
+                        calendarEventEditorStart = date
+                        isCalendarEventEditorPresented = true
+                    }
                 )
             }
             .tabItem {
@@ -142,6 +177,27 @@ struct IOSMainView: View {
         }
         .onChange(of: projectSyncSignature) { _, _ in
             scheduleAutoSync(reason: "Изменения проектов")
+        }
+        .sheet(isPresented: $isCalendarEventEditorPresented) {
+            NavigationStack {
+                CalendarEventEditorView(
+                    event: calendarEventEditorEvent,
+                    occurrence: calendarEventEditorOccurrence,
+                    projects: projects,
+                    defaultStart: calendarEventEditorStart,
+                    defaultReminder: currentSettings.map { CalendarEventReminder(rawValue: $0.defaultReminderLeadMinutes) ?? .fifteenMinutes } ?? .fifteenMinutes,
+                    onSave: saveCalendarEvent,
+                    onDelete: calendarEventEditorEvent == nil ? nil : requestDeleteCalendarEvent,
+                    onCancel: { isCalendarEventEditorPresented = false }
+                )
+            }
+        }
+        .confirmationDialog("Изменить повторяющееся событие", isPresented: calendarEventActionBinding) {
+            Button("Только это событие") { performPendingCalendarEventAction(onlyOccurrence: true) }
+            Button("Всю серию") { performPendingCalendarEventAction(onlyOccurrence: false) }
+            Button("Отмена", role: .cancel) { pendingCalendarEventAction = nil }
+        } message: {
+            Text("Выберите область изменения.")
         }
     }
 
@@ -334,6 +390,105 @@ struct IOSMainView: View {
             calendarWeek.startOfWeek,
             inSameDayAs: CalendarService.currentWeek().startOfWeek
         )
+    }
+
+    private func calendarEventOccurrences(for week: CalendarWeek) -> [CalendarEventOccurrence] {
+        guard let first = week.days.first?.date, let last = week.days.last?.date,
+              let upper = Calendar.current.date(byAdding: .day, value: 1, to: last) else { return [] }
+        return calendarEvents.flatMap {
+            CalendarEventService.occurrences(for: $0, from: first, to: upper,
+                                             exceptions: calendarEventExceptions)
+        }.filter {
+            searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                || $0.title.localizedCaseInsensitiveContains(searchText)
+                || $0.notes.localizedCaseInsensitiveContains(searchText)
+                || ($0.project?.title.localizedCaseInsensitiveContains(searchText) ?? false)
+        }.sorted { $0.start < $1.start }
+    }
+
+    private func saveCalendarEvent(_ values: CalendarEventEditorValues) {
+        do {
+            let project = values.projectID.flatMap { id in projects.first { $0.id == id } }
+            if let event = calendarEventEditorEvent {
+                if event.recurrence != .none, let occurrence = calendarEventEditorOccurrence {
+                    pendingCalendarEventAction = .save(event, occurrence, values)
+                    isCalendarEventEditorPresented = false
+                    return
+                }
+                try CalendarEventService.update(event, title: values.title, notes: values.notes,
+                                               start: values.start, end: values.end,
+                                               timeZoneIdentifier: event.timeZoneIdentifier,
+                                               recurrence: values.recurrence,
+                                               recurrenceEndDate: values.recurrenceEndDate,
+                                               reminder: values.reminder, project: project,
+                                               context: modelContext)
+            } else {
+                _ = try CalendarEventService.create(title: values.title, notes: values.notes,
+                                                    start: values.start, end: values.end,
+                                                    recurrence: values.recurrence,
+                                                    recurrenceEndDate: values.recurrenceEndDate,
+                                                    reminder: values.reminder, project: project,
+                                                    context: modelContext)
+            }
+            isCalendarEventEditorPresented = false
+            scheduleAutoSync(reason: "Изменено расписание")
+        } catch { errorMessage = error.localizedDescription }
+    }
+
+    private func requestDeleteCalendarEvent() {
+        guard let event = calendarEventEditorEvent else { return }
+        if event.recurrence != .none, let occurrence = calendarEventEditorOccurrence {
+            pendingCalendarEventAction = .delete(event, occurrence)
+            isCalendarEventEditorPresented = false
+        } else {
+            do { try CalendarEventService.deleteSeries(event, context: modelContext); isCalendarEventEditorPresented = false; scheduleAutoSync(reason: "Удалено событие") }
+            catch { errorMessage = error.localizedDescription }
+        }
+    }
+
+    private var calendarEventActionBinding: Binding<Bool> {
+        Binding(get: { pendingCalendarEventAction != nil }, set: { if !$0 { pendingCalendarEventAction = nil } })
+    }
+
+    private func performPendingCalendarEventAction(onlyOccurrence: Bool) {
+        guard let action = pendingCalendarEventAction else { return }
+        defer { pendingCalendarEventAction = nil }
+        do {
+            switch action {
+            case let .save(event, occurrence, values):
+                let project = values.projectID.flatMap { id in projects.first { $0.id == id } }
+                if onlyOccurrence {
+                    try CalendarEventService.updateOccurrence(of: event, on: occurrence.occurrenceDate,
+                        title: values.title, notes: values.notes, start: values.start, end: values.end,
+                        reminder: values.reminder, projectOverrideSet: true, project: project, context: modelContext)
+                } else {
+                    try CalendarEventService.update(event, title: values.title, notes: values.notes,
+                        start: values.start, end: values.end, timeZoneIdentifier: event.timeZoneIdentifier,
+                        recurrence: values.recurrence, recurrenceEndDate: values.recurrenceEndDate,
+                        reminder: values.reminder, project: project, context: modelContext)
+                }
+            case let .delete(event, occurrence):
+                if onlyOccurrence { try CalendarEventService.deleteOccurrence(of: event, on: occurrence.occurrenceDate, context: modelContext) }
+                else { try CalendarEventService.deleteSeries(event, context: modelContext) }
+            case let .move(event, occurrence, date):
+                if onlyOccurrence {
+                    try CalendarEventService.updateOccurrence(of: event, on: occurrence.occurrenceDate,
+                        start: date, end: date.addingTimeInterval(occurrence.end.timeIntervalSince(occurrence.start)), context: modelContext)
+                } else {
+                    let delta = date.timeIntervalSince(occurrence.start)
+                    try CalendarEventService.update(event, title: event.title, notes: event.notes,
+                        start: event.start.addingTimeInterval(delta), end: event.end.addingTimeInterval(delta),
+                        timeZoneIdentifier: event.timeZoneIdentifier, recurrence: event.recurrence,
+                        recurrenceEndDate: event.recurrenceEndDate, reminder: event.reminder, project: event.project, context: modelContext)
+                }
+            case let .resize(event, occurrence, end):
+                if onlyOccurrence { try CalendarEventService.updateOccurrence(of: event, on: occurrence.occurrenceDate, start: occurrence.start, end: end, context: modelContext) }
+                else { try CalendarEventService.update(event, title: event.title, notes: event.notes, start: event.start,
+                    end: event.start.addingTimeInterval(end.timeIntervalSince(occurrence.start)), timeZoneIdentifier: event.timeZoneIdentifier,
+                    recurrence: event.recurrence, recurrenceEndDate: event.recurrenceEndDate, reminder: event.reminder, project: event.project, context: modelContext) }
+            }
+            scheduleAutoSync(reason: "Изменено расписание")
+        } catch { errorMessage = error.localizedDescription }
     }
 
     private var todayTasksForSelectedMode: [PlannerTask] {

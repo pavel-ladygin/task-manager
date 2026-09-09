@@ -99,12 +99,21 @@ private extension AppTheme {
     }
 }
 
+private enum MacCalendarEventAction {
+    case save(CalendarEvent, CalendarEventOccurrence, CalendarEventEditorValues)
+    case delete(CalendarEvent, CalendarEventOccurrence)
+    case move(CalendarEvent, CalendarEventOccurrence, Date)
+    case resize(CalendarEvent, CalendarEventOccurrence, Date)
+}
+
 struct MacMainView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var scenePhase
     @Query(sort: \PlannerTask.createdAt, order: .forward) private var tasks: [PlannerTask]
     @Query(sort: \Project.createdAt, order: .forward) private var projects: [Project]
     @Query(sort: \AppSettings.createdAt, order: .forward) private var appSettings: [AppSettings]
+    @Query(sort: \CalendarEvent.start, order: .forward) private var calendarEvents: [CalendarEvent]
+    @Query private var calendarEventExceptions: [CalendarEventException]
     @FocusState private var focusedField: MacFocusedField?
 
     @State private var selectedSection: MacSidebarSection = .inbox
@@ -125,6 +134,11 @@ struct MacMainView: View {
     @State private var activeSyncPollingTask: Task<Void, Never>?
     @State private var isAutoSyncing = false
     @State private var taskEditorSession: TaskEditorSession?
+    @State private var calendarEventEditorEvent: CalendarEvent?
+    @State private var calendarEventEditorOccurrence: CalendarEventOccurrence?
+    @State private var calendarEventEditorStart = Date.now
+    @State private var isCalendarEventEditorPresented = false
+    @State private var pendingCalendarEventAction: MacCalendarEventAction?
     @StateObject private var voiceInputController = TaskVoiceInputController()
 
     private var selectedTask: PlannerTask? {
@@ -228,6 +242,26 @@ struct MacMainView: View {
             .onChange(of: projectSyncSignature) { _, _ in
                 scheduleAutoSync(reason: "Изменения проектов")
             }
+            .sheet(isPresented: $isCalendarEventEditorPresented) {
+                NavigationStack {
+                    CalendarEventEditorView(
+                        event: calendarEventEditorEvent,
+                        occurrence: calendarEventEditorOccurrence,
+                        projects: projects,
+                        defaultStart: calendarEventEditorStart,
+                        defaultReminder: currentSettings.flatMap { CalendarEventReminder(rawValue: $0.defaultReminderLeadMinutes) } ?? .fifteenMinutes,
+                        onSave: saveCalendarEvent,
+                        onDelete: calendarEventEditorEvent == nil ? nil : requestDeleteCalendarEvent,
+                        onCancel: { isCalendarEventEditorPresented = false }
+                    )
+                    .frame(minWidth: 520, minHeight: 560)
+                }
+            }
+            .confirmationDialog("Изменить повторяющееся событие", isPresented: calendarEventActionBinding) {
+                Button("Только это событие") { performPendingCalendarEventAction(onlyOccurrence: true) }
+                Button("Всю серию") { performPendingCalendarEventAction(onlyOccurrence: false) }
+                Button("Отмена", role: .cancel) { pendingCalendarEventAction = nil }
+            }
     }
 
     @ViewBuilder
@@ -275,6 +309,7 @@ struct MacMainView: View {
             kanbanColumns: kanbanColumns,
             calendarWeek: calendarWeek,
             calendarPlacements: calendarPlacements,
+            calendarEventOccurrences: calendarEventOccurrences,
             isCurrentCalendarWeek: isCurrentCalendarWeek,
             projects: activeProjects,
             allProjectTasks: selectedProjectTasks,
@@ -292,6 +327,10 @@ struct MacMainView: View {
             moveTask: moveTask,
             rescheduleTask: rescheduleTask,
             setTaskDue: setTaskDue,
+            openCalendarEvent: openCalendarEvent,
+            moveCalendarEvent: requestMoveCalendarEvent,
+            resizeCalendarEvent: requestResizeCalendarEvent,
+            createCalendarEvent: presentNewCalendarEvent,
             openTaskInspector: openTaskInspector,
             closeTaskEditor: saveAndCloseTaskEditor,
             goToPreviousCalendarWeek: { moveSelectedCalendarWeek(by: -1) },
@@ -385,6 +424,20 @@ struct MacMainView: View {
             searchText: searchText,
             week: calendarWeek
         )
+    }
+
+    private var calendarEventOccurrences: [CalendarEventOccurrence] {
+        guard let first = calendarWeek.days.first?.date,
+              let last = calendarWeek.days.last?.date,
+              let upper = Calendar.current.date(byAdding: .day, value: 1, to: last) else { return [] }
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        return calendarEvents.flatMap {
+            CalendarEventService.occurrences(for: $0, from: first, to: upper, exceptions: calendarEventExceptions)
+        }.filter {
+            query.isEmpty || $0.title.localizedCaseInsensitiveContains(query)
+                || $0.notes.localizedCaseInsensitiveContains(query)
+                || ($0.project?.title.localizedCaseInsensitiveContains(query) ?? false)
+        }.sorted { $0.start < $1.start }
     }
 
     private var isCurrentCalendarWeek: Bool {
@@ -718,6 +771,108 @@ struct MacMainView: View {
 
     private func goToCurrentCalendarWeek() {
         selectedCalendarDate = .now
+    }
+
+    private func presentNewCalendarEvent(_ start: Date) {
+        calendarEventEditorEvent = nil; calendarEventEditorOccurrence = nil
+        calendarEventEditorStart = start; isCalendarEventEditorPresented = true
+    }
+
+    private func openCalendarEvent(_ occurrence: CalendarEventOccurrence) {
+        calendarEventEditorEvent = calendarEvents.first { $0.id == occurrence.eventID }
+        calendarEventEditorOccurrence = occurrence
+        calendarEventEditorStart = occurrence.start
+        isCalendarEventEditorPresented = true
+    }
+
+    private func saveCalendarEvent(_ values: CalendarEventEditorValues) {
+        let project = values.projectID.flatMap { id in projects.first { $0.id == id } }
+        do {
+            if let event = calendarEventEditorEvent {
+                if event.recurrence != .none, let occurrence = calendarEventEditorOccurrence {
+                    pendingCalendarEventAction = .save(event, occurrence, values)
+                    isCalendarEventEditorPresented = false
+                    return
+                }
+                try CalendarEventService.update(event, title: values.title, notes: values.notes, start: values.start,
+                    end: values.end, timeZoneIdentifier: event.timeZoneIdentifier, recurrence: values.recurrence,
+                    recurrenceEndDate: values.recurrenceEndDate, reminder: values.reminder, project: project, context: modelContext)
+            } else {
+                _ = try CalendarEventService.create(title: values.title, notes: values.notes, start: values.start,
+                    end: values.end, recurrence: values.recurrence, recurrenceEndDate: values.recurrenceEndDate,
+                    reminder: values.reminder, project: project, context: modelContext)
+            }
+            isCalendarEventEditorPresented = false; scheduleAutoSync(reason: "Изменено расписание")
+        } catch { errorMessage = error.localizedDescription }
+    }
+
+    private func requestDeleteCalendarEvent() {
+        guard let event = calendarEventEditorEvent else { return }
+        if event.recurrence != .none, let occurrence = calendarEventEditorOccurrence {
+            pendingCalendarEventAction = .delete(event, occurrence); isCalendarEventEditorPresented = false
+        } else {
+            do { try CalendarEventService.deleteSeries(event, context: modelContext); isCalendarEventEditorPresented = false; scheduleAutoSync(reason: "Удалено событие") }
+            catch { errorMessage = error.localizedDescription }
+        }
+    }
+
+    private func requestMoveCalendarEvent(_ occurrence: CalendarEventOccurrence, _ start: Date) {
+        guard let event = calendarEvents.first(where: { $0.id == occurrence.eventID }) else { return }
+        if event.recurrence == .none { applyCalendarEventMove(event, occurrence, start, onlyOccurrence: false) }
+        else { pendingCalendarEventAction = .move(event, occurrence, start) }
+    }
+
+    private func requestResizeCalendarEvent(_ occurrence: CalendarEventOccurrence, _ end: Date) {
+        guard let event = calendarEvents.first(where: { $0.id == occurrence.eventID }) else { return }
+        if event.recurrence == .none { applyCalendarEventResize(event, occurrence, end, onlyOccurrence: false) }
+        else { pendingCalendarEventAction = .resize(event, occurrence, end) }
+    }
+
+    private var calendarEventActionBinding: Binding<Bool> {
+        Binding(get: { pendingCalendarEventAction != nil }, set: { if !$0 { pendingCalendarEventAction = nil } })
+    }
+
+    private func performPendingCalendarEventAction(onlyOccurrence: Bool) {
+        guard let action = pendingCalendarEventAction else { return }; defer { pendingCalendarEventAction = nil }
+        do {
+            switch action {
+            case let .save(event, occurrence, values):
+                let project = values.projectID.flatMap { id in projects.first { $0.id == id } }
+                if onlyOccurrence { try CalendarEventService.updateOccurrence(of: event, on: occurrence.occurrenceDate,
+                    title: values.title, notes: values.notes, start: values.start, end: values.end, reminder: values.reminder,
+                    projectOverrideSet: true, project: project, context: modelContext) }
+                else { try CalendarEventService.update(event, title: values.title, notes: values.notes, start: values.start,
+                    end: values.end, timeZoneIdentifier: event.timeZoneIdentifier, recurrence: values.recurrence,
+                    recurrenceEndDate: values.recurrenceEndDate, reminder: values.reminder, project: project, context: modelContext) }
+            case let .delete(event, occurrence):
+                if onlyOccurrence { try CalendarEventService.deleteOccurrence(of: event, on: occurrence.occurrenceDate, context: modelContext) }
+                else { try CalendarEventService.deleteSeries(event, context: modelContext) }
+            case let .move(event, occurrence, start): applyCalendarEventMove(event, occurrence, start, onlyOccurrence: onlyOccurrence)
+            case let .resize(event, occurrence, end): applyCalendarEventResize(event, occurrence, end, onlyOccurrence: onlyOccurrence)
+            }
+            scheduleAutoSync(reason: "Изменено расписание")
+        } catch { errorMessage = error.localizedDescription }
+    }
+
+    private func applyCalendarEventMove(_ event: CalendarEvent, _ occurrence: CalendarEventOccurrence, _ start: Date, onlyOccurrence: Bool) {
+        do {
+            if onlyOccurrence { try CalendarEventService.updateOccurrence(of: event, on: occurrence.occurrenceDate, start: start,
+                end: start.addingTimeInterval(occurrence.end.timeIntervalSince(occurrence.start)), context: modelContext) }
+            else { let delta = start.timeIntervalSince(occurrence.start); try CalendarEventService.update(event, title: event.title,
+                notes: event.notes, start: event.start.addingTimeInterval(delta), end: event.end.addingTimeInterval(delta),
+                timeZoneIdentifier: event.timeZoneIdentifier, recurrence: event.recurrence, recurrenceEndDate: event.recurrenceEndDate,
+                reminder: event.reminder, project: event.project, context: modelContext) }
+        } catch { errorMessage = error.localizedDescription }
+    }
+
+    private func applyCalendarEventResize(_ event: CalendarEvent, _ occurrence: CalendarEventOccurrence, _ end: Date, onlyOccurrence: Bool) {
+        do {
+            if onlyOccurrence { try CalendarEventService.updateOccurrence(of: event, on: occurrence.occurrenceDate, start: occurrence.start, end: end, context: modelContext) }
+            else { try CalendarEventService.update(event, title: event.title, notes: event.notes, start: event.start,
+                end: event.start.addingTimeInterval(end.timeIntervalSince(occurrence.start)), timeZoneIdentifier: event.timeZoneIdentifier,
+                recurrence: event.recurrence, recurrenceEndDate: event.recurrenceEndDate, reminder: event.reminder,
+                project: event.project, context: modelContext) }
+        } catch { errorMessage = error.localizedDescription }
     }
 
     private func setHideEmptyKanbanColumns(_ isHidden: Bool, settings: AppSettings) {
@@ -1178,6 +1333,7 @@ private struct MacContentView: View {
     let kanbanColumns: [KanbanColumn]
     let calendarWeek: CalendarWeek
     let calendarPlacements: [CalendarTaskPlacement]
+    let calendarEventOccurrences: [CalendarEventOccurrence]
     let isCurrentCalendarWeek: Bool
     let projects: [Project]
     let allProjectTasks: [PlannerTask]
@@ -1195,6 +1351,10 @@ private struct MacContentView: View {
     let moveTask: (PlannerTask, TaskStatus, PlannerTask?, PlannerTask?) -> Void
     let rescheduleTask: (PlannerTask, Date) -> Void
     let setTaskDue: (PlannerTask, Date) -> Void
+    let openCalendarEvent: (CalendarEventOccurrence) -> Void
+    let moveCalendarEvent: (CalendarEventOccurrence, Date) -> Void
+    let resizeCalendarEvent: (CalendarEventOccurrence, Date) -> Void
+    let createCalendarEvent: (Date) -> Void
     let openTaskInspector: (UUID) -> Void
     let closeTaskEditor: () -> Void
     let goToPreviousCalendarWeek: () -> Void
@@ -1242,6 +1402,7 @@ private struct MacContentView: View {
                 CalendarWeekView(
                     week: calendarWeek,
                     placements: calendarPlacements,
+                    eventOccurrences: calendarEventOccurrences,
                     searchText: searchText,
                     isCurrentWeek: isCurrentCalendarWeek,
                     selectedTaskID: $selectedTaskID,
@@ -1250,7 +1411,11 @@ private struct MacContentView: View {
                     goToNextWeek: goToNextCalendarWeek,
                     goToCurrentWeek: goToCurrentCalendarWeek,
                     rescheduleTask: rescheduleTask,
-                    setTaskDue: setTaskDue
+                    setTaskDue: setTaskDue,
+                    openEvent: openCalendarEvent,
+                    moveEvent: moveCalendarEvent,
+                    resizeEvent: resizeCalendarEvent,
+                    createEvent: createCalendarEvent
                 )
             case .projects:
                 projectsView
@@ -1994,6 +2159,7 @@ private struct KanbanCardView: View {
 private struct CalendarWeekView: View {
     let week: CalendarWeek
     let placements: [CalendarTaskPlacement]
+    let eventOccurrences: [CalendarEventOccurrence]
     let searchText: String
     let isCurrentWeek: Bool
     @Binding var selectedTaskID: UUID?
@@ -2003,6 +2169,10 @@ private struct CalendarWeekView: View {
     let goToCurrentWeek: () -> Void
     let rescheduleTask: (PlannerTask, Date) -> Void
     let setTaskDue: (PlannerTask, Date) -> Void
+    let openEvent: (CalendarEventOccurrence) -> Void
+    let moveEvent: (CalendarEventOccurrence, Date) -> Void
+    let resizeEvent: (CalendarEventOccurrence, Date) -> Void
+    let createEvent: (Date) -> Void
 
     private let timeColumnWidth: CGFloat = 64
     private let dayColumnWidth: CGFloat = 164
@@ -2020,12 +2190,13 @@ private struct CalendarWeekView: View {
         VStack(alignment: .leading, spacing: 0) {
             CalendarWeekControlsView(
                 week: week,
-                placementCount: placements.count,
+                placementCount: placements.count + eventOccurrences.count,
                 isSearching: isSearching,
                 isCurrentWeek: isCurrentWeek,
                 goToPreviousWeek: goToPreviousWeek,
                 goToNextWeek: goToNextWeek,
-                goToCurrentWeek: goToCurrentWeek
+                goToCurrentWeek: goToCurrentWeek,
+                createEvent: { createEvent(.now) }
             )
             .padding([.horizontal, .top])
             .padding(.bottom, 10)
@@ -2058,13 +2229,18 @@ private struct CalendarWeekView: View {
                             CalendarTimelineDayColumn(
                                 day: day,
                                 placements: timedPlacements(for: day),
+                                eventOccurrences: eventOccurrences.filter { Calendar.current.isDate($0.start, inSameDayAs: day.date) },
                                 allPlacements: placements,
                                 dayColumnWidth: dayColumnWidth,
                                 slotHeight: slotHeight,
                                 timelineHeight: timelineHeight,
                                 selectTask: openTaskInspector,
                                 rescheduleTask: rescheduleTask,
-                                setTaskDue: setTaskDue
+                                setTaskDue: setTaskDue,
+                                openEvent: openEvent,
+                                moveEvent: moveEvent,
+                                resizeEvent: resizeEvent,
+                                createEvent: createEvent
                             )
                         }
                     }
@@ -2093,6 +2269,7 @@ private struct CalendarWeekControlsView: View {
     let goToPreviousWeek: () -> Void
     let goToNextWeek: () -> Void
     let goToCurrentWeek: () -> Void
+    let createEvent: () -> Void
 
     var body: some View {
         HStack(spacing: 12) {
@@ -2116,6 +2293,9 @@ private struct CalendarWeekControlsView: View {
             }
 
             Spacer(minLength: 16)
+
+            Button("Новое событие", systemImage: "plus", action: createEvent)
+                .buttonStyle(.borderedProminent)
 
             Button("Сегодня", action: goToCurrentWeek)
                 .buttonStyle(.bordered)
@@ -2288,6 +2468,7 @@ private struct CalendarTimeAxis: View {
 private struct CalendarTimelineDayColumn: View {
     let day: CalendarDay
     let placements: [CalendarTaskPlacement]
+    let eventOccurrences: [CalendarEventOccurrence]
     let allPlacements: [CalendarTaskPlacement]
     let dayColumnWidth: CGFloat
     let slotHeight: CGFloat
@@ -2295,6 +2476,10 @@ private struct CalendarTimelineDayColumn: View {
     let selectTask: (UUID) -> Void
     let rescheduleTask: (PlannerTask, Date) -> Void
     let setTaskDue: (PlannerTask, Date) -> Void
+    let openEvent: (CalendarEventOccurrence) -> Void
+    let moveEvent: (CalendarEventOccurrence, Date) -> Void
+    let resizeEvent: (CalendarEventOccurrence, Date) -> Void
+    let createEvent: (Date) -> Void
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -2320,9 +2505,25 @@ private struct CalendarTimelineDayColumn: View {
                 )
                 .offset(x: 6 + (CGFloat(layout.lane) * laneWidth), y: yOffset(for: placement))
             }
+            ForEach(eventOccurrences) { occurrence in
+                CalendarEventBlock(
+                    occurrence: occurrence,
+                    width: dayColumnWidth * 0.56,
+                    height: max(24, CGFloat(occurrence.end.timeIntervalSince(occurrence.start) / 60) / 30 * slotHeight - 2),
+                    slotHeight: slotHeight,
+                    openEvent: { openEvent(occurrence) },
+                    moveEvent: { moveEvent(occurrence, $0) },
+                    resizeEvent: { resizeEvent(occurrence, $0) }
+                )
+                .offset(x: dayColumnWidth * 0.41, y: CGFloat(minuteOfDay(occurrence.start)) / 30 * slotHeight)
+            }
         }
         .frame(width: dayColumnWidth, height: timelineHeight, alignment: .topLeading)
         .contentShape(Rectangle())
+        .gesture(SpatialTapGesture(count: 2).onEnded { value in
+            let slot = min(47, max(0, Int(value.location.y / slotHeight)))
+            createEvent(CalendarService.date(for: day, hour: slot / 2, minute: slot.isMultiple(of: 2) ? 0 : 30))
+        })
         .onDrop(
             of: [.plainText],
             delegate: CalendarTimelineDropDelegate(
@@ -2343,6 +2544,10 @@ private struct CalendarTimelineDayColumn: View {
 
     private func height(for placement: CalendarTaskPlacement) -> CGFloat {
         max(24, (CGFloat(placement.durationMinutes) / 30) * slotHeight - 2)
+    }
+
+    private func minuteOfDay(_ date: Date) -> Int {
+        Calendar.current.component(.hour, from: date) * 60 + Calendar.current.component(.minute, from: date)
     }
 }
 
@@ -2406,6 +2611,51 @@ private struct CalendarTimelineDropDelegate: DropDelegate {
         return min(47, max(0, Int(clampedY / slotHeight)))
     }
 }
+private struct CalendarEventBlock: View {
+    let occurrence: CalendarEventOccurrence
+    let width: CGFloat
+    let height: CGFloat
+    let slotHeight: CGFloat
+    let openEvent: () -> Void
+    let moveEvent: (Date) -> Void
+    let resizeEvent: (Date) -> Void
+
+    var body: some View {
+        Button(action: openEvent) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(occurrence.title).font(.caption).fontWeight(.semibold).lineLimit(1)
+                Text("\(occurrence.start.formatted(date: .omitted, time: .shortened))–\(occurrence.end.formatted(date: .omitted, time: .shortened))")
+                    .font(.caption2).foregroundStyle(PlannerTheme.secondaryText).lineLimit(1)
+            }
+            .padding(5).frame(width: width, height: height, alignment: .topLeading)
+            .background(eventBackground, in: RoundedRectangle(cornerRadius: 6))
+            .overlay(RoundedRectangle(cornerRadius: 6).stroke(eventAccent.opacity(0.65), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .simultaneousGesture(DragGesture(minimumDistance: 8).onEnded { value in
+            let slots = Int((value.translation.height / slotHeight).rounded())
+            guard slots != 0 else { return }
+            moveEvent(occurrence.start.addingTimeInterval(Double(slots * 1_800)))
+        })
+        .overlay(alignment: .bottom) {
+            Capsule().fill(eventAccent).frame(width: 32, height: 4).padding(.bottom, 3)
+                .gesture(DragGesture(minimumDistance: 4).onEnded { value in
+                    let slots = Int((value.translation.height / slotHeight).rounded())
+                    let proposed = occurrence.end.addingTimeInterval(Double(slots * 1_800))
+                    if slots != 0, proposed > occurrence.start { resizeEvent(proposed) }
+                })
+        }
+    }
+
+    private var eventAccent: Color {
+        occurrence.project.map { PlannerTheme.projectAccent($0.colorPreset) } ?? PlannerTheme.accent
+    }
+    private var eventBackground: AnyShapeStyle {
+        occurrence.project.map { AnyShapeStyle(PlannerTheme.projectGradient($0.colorPreset, opacity: 0.28)) }
+            ?? AnyShapeStyle(PlannerTheme.accentSoft)
+    }
+}
+
 private struct CalendarTaskBlock: View {
     let placement: CalendarTaskPlacement
     let width: CGFloat
