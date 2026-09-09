@@ -253,15 +253,22 @@ final class PlannerCoreTests: XCTestCase {
         let controller = TaskVoiceInputController(provider: provider)
         var text = "Купить"
         controller.toggle(fieldID: "one", currentText: text) { text = $0 }
-        await Task.yield()
+        for _ in 0..<100 where controller.state != .listening {
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+        XCTAssertEqual(controller.state, .listening)
 
         provider.emit("молоко", isFinal: false)
-        await Task.yield()
+        for _ in 0..<100 where text != "Купить молоко" {
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
         XCTAssertEqual(text, "Купить молоко")
         XCTAssertEqual(controller.state, .listening)
 
         provider.emit("молоко и хлеб", isFinal: true)
-        await Task.yield()
+        for _ in 0..<100 where text != "Купить молоко и хлеб" || controller.state != .idle {
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
         XCTAssertEqual(text, "Купить молоко и хлеб")
         XCTAssertEqual(controller.state, .idle)
         XCTAssertNil(controller.activeFieldID)

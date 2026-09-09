@@ -93,9 +93,35 @@ The workflow should connect with `ssh "$VPS_USER@$VPS_HOST" deploy-planner-sync
 
 ## Manual verification and rollback
 
-The deploy script pulls the requested image, starts it, and polls
-`https://127.0.0.1/health`. On a failed health check it starts the previously
+The deploy script pulls the requested image, starts it, and polls the effective
+planner listener. If `HEALTH_URL` is explicitly set in the root environment it
+uses that URL; otherwise it reads `PLANNER_ADDR` from the running
+`planner-sync` container and polls `https://127.0.0.1:<port>/health` (default
+port `443`). On a failed health check it starts the previously
 recorded tag from `/var/lib/planner-sync/active-tag` and verifies health again.
 The SQLite volume is never removed. A first deployment must have a valid
 previous tag recorded (or be performed manually by root) before rollback is
 available.
+
+### Updating an existing deployment that uses `PLANNER_ADDR=:8443`
+
+The initial production deployment may already be running on port `8443`, while
+older copies of the script still probe the default port `443`. Update only the
+root-owned script on the VPS, keeping the existing `.env`, certificates, and
+SQLite volume unchanged:
+
+```sh
+install -o root -g root -m 0750 infra/deploy/deploy-planner-sync /usr/local/sbin/deploy-planner-sync
+grep '^PLANNER_ADDR=' /opt/planner-sync/.env
+docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' planner-sync | grep '^PLANNER_ADDR='
+```
+
+Both checks should show `PLANNER_ADDR=:8443`. Do not change it to `:443` just
+for the health check. After installing the updated script, re-run the failed
+`Deploy immutable image to VPS` GitHub Actions job. The script will discover
+port `8443` from the running container, verify
+`https://127.0.0.1:8443/health`, and record the deployed SHA. A manual check is:
+
+```sh
+curl --fail --silent --show-error --insecure https://127.0.0.1:8443/health
+```
