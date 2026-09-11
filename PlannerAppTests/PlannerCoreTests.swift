@@ -503,39 +503,12 @@ final class PlannerCoreTests: XCTestCase {
             try container.mainContext.save()
         }
 
-        let schema = Schema(versionedSchema: PlannerSchemaV4.self)
+        let schema = Schema(versionedSchema: PlannerSchemaV3.self)
         let configuration = ModelConfiguration("V2", schema: schema, url: url)
         let migrated = try ModelContainer(for: schema, migrationPlan: PlannerMigrationPlan.self, configurations: [configuration])
         let tasks = try migrated.mainContext.fetch(FetchDescriptor<PlannerTask>())
         XCTAssertEqual(tasks.first?.title, "Before migration")
         XCTAssertEqual(tasks.first?.showInKanban, true)
-    }
-
-    @MainActor
-    func testV3CalendarExceptionMigratesToV4WithoutLosingSkipFlag() throws {
-        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: directory) }
-        let url = directory.appendingPathComponent("migration.store")
-        let eventID = UUID()
-
-        do {
-            let schema = Schema(versionedSchema: PlannerSchemaV3.self)
-            let configuration = ModelConfiguration("V3", schema: schema, url: url)
-            let container = try ModelContainer(for: schema, configurations: [configuration])
-            let exception = PlannerSchemaV3.CalendarEventException()
-            exception.eventID = eventID
-            exception.isDeleted = true
-            container.mainContext.insert(exception)
-            try container.mainContext.save()
-        }
-
-        let schema = Schema(versionedSchema: PlannerSchemaV4.self)
-        let configuration = ModelConfiguration("V4", schema: schema, url: url)
-        let migrated = try ModelContainer(for: schema, migrationPlan: PlannerMigrationPlan.self, configurations: [configuration])
-        let exception = try XCTUnwrap(migrated.mainContext.fetch(FetchDescriptor<CalendarEventException>()).first)
-        XCTAssertEqual(exception.eventID, eventID)
-        XCTAssertTrue(exception.isSkipped)
     }
 
     @MainActor
@@ -570,7 +543,7 @@ final class PlannerCoreTests: XCTestCase {
 
     @MainActor
     private func inMemoryContainer() throws -> ModelContainer {
-        let schema = Schema(versionedSchema: PlannerSchemaV4.self)
+        let schema = Schema(versionedSchema: PlannerSchemaV3.self)
         return try ModelContainer(
             for: schema,
             migrationPlan: PlannerMigrationPlan.self,

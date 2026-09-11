@@ -42,7 +42,7 @@ final class PlannerStoreBootstrap: ObservableObject {
     @Published private(set) var latestBackupURL: URL?
     @Published private(set) var diagnosticText = ""
 
-    private let schema = Schema(versionedSchema: PlannerSchemaV4.self)
+    private let schema = Schema(versionedSchema: PlannerSchemaV3.self)
     private lazy var configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 
     init() { load() }
