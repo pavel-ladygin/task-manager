@@ -20,6 +20,7 @@ struct IOSSettingsView: View {
     let testSyncConnection: (AppSettings) -> Void
     let bootstrapSync: (AppSettings) -> Void
     let syncNow: (AppSettings) -> Void
+    let reloadCalendarEvents: (AppSettings) -> Void
     let completedTaskCount: Int
     let clearCompletedTasks: () throws -> Int
     let importBackup: (Data) throws -> Void
@@ -168,6 +169,10 @@ struct IOSSettingsView: View {
 
                     Button("Sync now") {
                         syncNow(settings)
+                    }
+
+                    Button("Повторно загрузить календарь") {
+                        reloadCalendarEvents(settings)
                     }
                 } else {
                     LabeledContent("Синхронизация", value: "Загрузка")

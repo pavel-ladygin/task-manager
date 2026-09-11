@@ -104,6 +104,7 @@ enum CalendarService {
         week: CalendarWeek
     ) -> [CalendarTaskPlacement] {
         tasks
+            .filter(TaskListService.isActive)
             .filter { TaskListService.matchesSearch($0, searchText: searchText) }
             .flatMap { task in
                 placements(for: task, calendar: calendar, week: week)

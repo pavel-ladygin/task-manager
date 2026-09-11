@@ -1,6 +1,10 @@
 import Foundation
 import SwiftData
 
+#if canImport(WidgetKit)
+import WidgetKit
+#endif
+
 @MainActor
 enum AutoSyncService {
     static let debounceDelayNanoseconds: UInt64 = 2_500_000_000
@@ -14,6 +18,14 @@ enum AutoSyncService {
         return !settings.syncServerURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !settings.syncCertificateFingerprint.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// Requests a fresh widget timeline after local data has reached the server.
+    /// WidgetKit is not available in every target that shares the sync service.
+    static func reloadWidgetTimelines() {
+        #if canImport(WidgetKit)
+        WidgetCenter.shared.reloadTimelines(ofKind: PlannerWidgetShared.todayWidgetKind)
+        #endif
     }
 
     static func syncNow(

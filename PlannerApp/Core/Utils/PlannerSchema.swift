@@ -390,17 +390,20 @@ enum PlannerSchemaV2: VersionedSchema {
 }
 
 enum PlannerMigrationPlan: SchemaMigrationPlan {
-    static var schemas: [any VersionedSchema.Type] { [PlannerSchemaV1.self, PlannerSchemaV2.self, PlannerSchemaV3.self] }
+    static var schemas: [any VersionedSchema.Type] {
+        [PlannerSchemaV1.self, PlannerSchemaV2.self, PlannerSchemaV3.self, PlannerSchemaV4.self]
+    }
     static var stages: [MigrationStage] {
         [
             .lightweight(fromVersion: PlannerSchemaV1.self, toVersion: PlannerSchemaV2.self),
-            .lightweight(fromVersion: PlannerSchemaV2.self, toVersion: PlannerSchemaV3.self)
+            .lightweight(fromVersion: PlannerSchemaV2.self, toVersion: PlannerSchemaV3.self),
+            .lightweight(fromVersion: PlannerSchemaV3.self, toVersion: PlannerSchemaV4.self)
         ]
     }
 }
 
 enum PlannerSchema {
-    static let models = PlannerSchemaV3.models
+    static let models = PlannerSchemaV4.models
 }
 
 /// The third schema adds calendar-only events. Existing task and project model
@@ -408,6 +411,49 @@ enum PlannerSchema {
 /// lightweight without rewriting their relationships.
 enum PlannerSchemaV3: VersionedSchema {
     static let versionIdentifier = Schema.Version(3, 0, 0)
+    static var models: [any PersistentModel.Type] {
+        PlannerSchemaV2.models + [CalendarEvent.self, CalendarEventException.self]
+    }
+
+    @Model final class CalendarEvent {
+        @Attribute(.unique) var id: UUID = UUID()
+        var title: String = ""
+        var notes: String = ""
+        var start: Date = Date.now
+        var end: Date = Date.now.addingTimeInterval(1800)
+        var timeZoneIdentifier: String = TimeZone.current.identifier
+        var recurrenceRawValue: String = CalendarEventRecurrence.none.rawValue
+        var recurrenceEndDate: Date?
+        var reminderRawValue: Int = CalendarEventReminder.fifteenMinutes.rawValue
+        var createdAt: Date = Date.now
+        var updatedAt: Date = Date.now
+        var project: PlannerSchemaV2.Project?
+        init() {}
+    }
+
+    @Model final class CalendarEventException {
+        @Attribute(.unique) var id: UUID = UUID()
+        var eventID: UUID = UUID()
+        var occurrenceDate: Date = Date.now
+        var isDeleted: Bool = false
+        var titleOverride: String?
+        var notesOverride: String?
+        var startOverride: Date?
+        var endOverride: Date?
+        var timeZoneIdentifierOverride: String?
+        var reminderRawValueOverride: Int?
+        var projectOverrideSet: Bool = false
+        var project: PlannerSchemaV2.Project?
+        var createdAt: Date = Date.now
+        var updatedAt: Date = Date.now
+        init() {}
+    }
+}
+
+/// V4 fixes the V3 exception flag's collision with PersistentModel.isDeleted.
+/// `CalendarEventException.isSkipped` keeps V3's physical `isDeleted` column.
+enum PlannerSchemaV4: VersionedSchema {
+    static let versionIdentifier = Schema.Version(4, 0, 0)
     static var models: [any PersistentModel.Type] {
         PlannerSchemaV2.models + [CalendarEvent.self, CalendarEventException.self]
     }

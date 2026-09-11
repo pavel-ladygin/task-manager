@@ -133,6 +133,8 @@ struct MacMainView: View {
     @State private var autoSyncTask: Task<Void, Never>?
     @State private var activeSyncPollingTask: Task<Void, Never>?
     @State private var isAutoSyncing = false
+    @State private var hasPendingAutoSync = false
+    @State private var isImmediateAutoSyncScheduled = false
     @State private var taskEditorSession: TaskEditorSession?
     @State private var calendarEventEditorEvent: CalendarEvent?
     @State private var calendarEventEditorOccurrence: CalendarEventOccurrence?
@@ -350,6 +352,7 @@ struct MacMainView: View {
             testSyncConnection: testSyncConnection,
             bootstrapSync: bootstrapSync,
             syncNow: syncNow,
+            reloadCalendarEvents: reloadCalendarEvents,
             completedTaskCount: completedTaskCount,
             clearCompletedTasks: clearCompletedTasks,
             exportBackup: exportBackup,
@@ -700,7 +703,7 @@ struct MacMainView: View {
                 context: modelContext
             )
             showMutatedTask(task)
-            scheduleAutoSync(reason: "Задача выполнена")
+            triggerAutoSyncNow(reason: "Задача выполнена")
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -986,6 +989,19 @@ struct MacMainView: View {
                 let result = try await SyncService.syncNow(context: modelContext, settings: settings, token: syncToken)
                 syncStatus = "Sync OK: отправлено \(result.pushed), получено \(result.pulled), cursor \(result.cursor)"
                 statusMessage = syncStatus
+                AutoSyncService.reloadWidgetTimelines()
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func reloadCalendarEvents(_ settings: AppSettings) {
+        Task {
+            do {
+                let count = try await SyncService.reloadCalendarEvents(context: modelContext, settings: settings, token: syncToken)
+                syncStatus = "Календарь загружен: \(count) изменений"
+                statusMessage = syncStatus
             } catch {
                 errorMessage = error.localizedDescription
             }
@@ -1077,7 +1093,7 @@ struct MacMainView: View {
                 context: modelContext
             )
             showMutatedTask(selectedTask)
-            scheduleAutoSync(reason: "Задача выполнена")
+            triggerAutoSyncNow(reason: "Задача выполнена")
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -1115,6 +1131,11 @@ struct MacMainView: View {
             return
         }
 
+        if isAutoSyncing || isImmediateAutoSyncScheduled {
+            hasPendingAutoSync = true
+            return
+        }
+
         autoSyncTask?.cancel()
         autoSyncTask = Task {
             do {
@@ -1136,9 +1157,15 @@ struct MacMainView: View {
             return
         }
 
+        if isAutoSyncing {
+            hasPendingAutoSync = true
+            return
+        }
+
         autoSyncTask?.cancel()
-        autoSyncTask = nil
-        Task {
+        isImmediateAutoSyncScheduled = true
+        autoSyncTask = Task {
+            isImmediateAutoSyncScheduled = false
             await performAutoSync(reason: reason, showErrors: false)
         }
     }
@@ -1183,7 +1210,6 @@ struct MacMainView: View {
         }
 
         isAutoSyncing = true
-        defer { isAutoSyncing = false }
 
         do {
             let result = try await AutoSyncService.syncNow(
@@ -1192,11 +1218,19 @@ struct MacMainView: View {
                 token: syncToken
             )
             syncStatus = "Автосинк OK: отправлено \(result.pushed), получено \(result.pulled), cursor \(result.cursor)"
+            AutoSyncService.reloadWidgetTimelines()
         } catch {
             syncStatus = "Автосинк ошибка: \(error.localizedDescription)"
             if showErrors {
                 errorMessage = error.localizedDescription
             }
+        }
+
+        isAutoSyncing = false
+
+        if hasPendingAutoSync {
+            hasPendingAutoSync = false
+            triggerAutoSyncNow(reason: "Ожидающие изменения")
         }
     }
 }
@@ -1374,6 +1408,7 @@ private struct MacContentView: View {
     let testSyncConnection: (AppSettings) -> Void
     let bootstrapSync: (AppSettings) -> Void
     let syncNow: (AppSettings) -> Void
+    let reloadCalendarEvents: (AppSettings) -> Void
     let completedTaskCount: Int
     let clearCompletedTasks: () -> Void
     let exportBackup: () -> Void
@@ -1436,6 +1471,7 @@ private struct MacContentView: View {
                     testSyncConnection: testSyncConnection,
                     bootstrapSync: bootstrapSync,
                     syncNow: syncNow,
+                    reloadCalendarEvents: reloadCalendarEvents,
                     completedTaskCount: completedTaskCount,
                     clearCompletedTasks: clearCompletedTasks,
                     exportBackup: exportBackup,
@@ -2941,6 +2977,7 @@ private struct SettingsPlaceholderView: View {
     let testSyncConnection: (AppSettings) -> Void
     let bootstrapSync: (AppSettings) -> Void
     let syncNow: (AppSettings) -> Void
+    let reloadCalendarEvents: (AppSettings) -> Void
     let completedTaskCount: Int
     let clearCompletedTasks: () -> Void
     let exportBackup: () -> Void
@@ -3055,6 +3092,9 @@ private struct SettingsPlaceholderView: View {
 
                         Button("Sync now") {
                             syncNow(settings)
+                        }
+                        Button("Повторно загрузить календарь") {
+                            reloadCalendarEvents(settings)
                         }
                     }
                 } else {

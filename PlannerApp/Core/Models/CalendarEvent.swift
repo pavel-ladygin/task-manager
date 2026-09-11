@@ -83,7 +83,10 @@ enum CalendarEventReminder: Int, CaseIterable, Codable, Hashable, Identifiable {
     @Attribute(.unique) var id: UUID = UUID()
     var eventID: UUID = UUID()
     var occurrenceDate: Date = Date.now
-    var isSkipped: Bool = false
+    // V3 accidentally persisted this field as `isDeleted`. Keep that column
+    // name while exposing an unambiguous model property that does not collide
+    // with SwiftData's own PersistentModel.isDeleted state.
+    @Attribute(originalName: "isDeleted") var isSkipped: Bool = false
     var titleOverride: String?
     var notesOverride: String?
     var startOverride: Date?
