@@ -111,8 +111,13 @@ enum SyncService {
                             serverRevision: result.serverRevision
                         ))
                     }
-                    if let current = result.current { try apply(changes: [current], context: context, settings: settings) }
                     context.delete(item)
+                    // The conflict response is authoritative. Remove the pending
+                    // mutation before applying it so the pending-mutation guard
+                    // used by normal pulls does not suppress the server version.
+                    if let current = result.current {
+                        try apply(changes: [current], context: context, settings: settings, respectPendingMutations: false)
+                    }
                     conflicts += 1
                 default:
                     break
@@ -125,6 +130,40 @@ enum SyncService {
         settings.syncLastSyncAt = .now
         try context.save()
         return SyncResult(pushed: pushed, ignored: conflicts, pulled: pulled, cursor: settings.syncLastCursor)
+    }
+
+    /// Replays only calendar-only entities without changing the normal sync
+    /// cursor. This recovers events skipped by an older app while leaving
+    /// tasks and projects untouched.
+    static func reloadCalendarEvents(context: ModelContext, settings: AppSettings, token: String) async throws -> Int {
+        guard settings.syncEnabled else { throw SyncError.disabled }
+        guard !isSyncing else { throw SyncError.syncInProgress }
+        isSyncing = true
+        defer { isSyncing = false }
+
+        let client = try makeClient(settings: settings, token: token)
+        var historyCursor: Int64 = 0
+        var imported = 0
+        while true {
+            let response = try await client.changes(after: historyCursor)
+            let calendarChanges = response.changes.filter {
+                $0.entityType == SyncEntityType.calendarEvent.rawValue
+                    || $0.entityType == SyncEntityType.calendarEventException.rawValue
+            }
+            if !calendarChanges.isEmpty {
+                do {
+                    try apply(changes: calendarChanges, context: context, settings: settings)
+                    try context.save()
+                    imported += calendarChanges.count
+                } catch {
+                    context.rollback()
+                    throw error
+                }
+            }
+            guard response.hasMore, let latestRevision = response.changes.map(\.revision).max() else { break }
+            historyCursor = latestRevision
+        }
+        return imported
     }
 
     static func resolve(
@@ -363,14 +402,25 @@ enum SyncService {
         )
     }
 
-    private static func apply(
+    static func apply(
         changes: [SyncServerChangeDTO],
         context: ModelContext,
-        settings: AppSettings
+        settings: AppSettings,
+        respectPendingMutations: Bool = true
     ) throws {
+        let pendingEntityKeys: Set<String>
+        if respectPendingMutations {
+            pendingEntityKeys = Set(try context.fetch(FetchDescriptor<SyncOutboxItem>()).map {
+                "\($0.entityType):\($0.entityID)"
+            })
+        } else {
+            pendingEntityKeys = []
+        }
         let order: [SyncEntityType] = [.project, .tag, .settings, .calendarEvent, .calendarEventException, .task]
         for type in order {
             for change in changes where change.entityType == type.rawValue {
+                let key = "\(change.entityType):\(change.entityID)"
+                guard !pendingEntityKeys.contains(key) else { continue }
                 try apply(change: change, context: context, settings: settings)
             }
         }
@@ -661,19 +711,23 @@ enum SyncService {
         )
     }
 
-    private static func upsertCalendarEvent(_ dto: CalendarEventBackupDTO, context: ModelContext) throws {
+    static func upsertCalendarEvent(_ dto: CalendarEventBackupDTO, context: ModelContext) throws {
         let project = dto.projectID.flatMap { id in
             (try? context.fetch(FetchDescriptor<Project>()))?.first { $0.id == id }
         }
-        let event = try context.fetch(FetchDescriptor<CalendarEvent>()).first { $0.id == dto.id }
-            ?? CalendarEvent(id: dto.id, title: dto.title, notes: dto.notes,
-                             start: dto.start, end: dto.end,
-                             timeZoneIdentifier: dto.timeZoneIdentifier,
-                             recurrence: CalendarEventRecurrence(rawValue: dto.recurrenceRawValue) ?? .none,
-                             recurrenceEndDate: dto.recurrenceEndDate,
-                             reminder: CalendarEventReminder(rawValue: dto.reminderRawValue) ?? .fifteenMinutes, project: project,
-                             createdAt: dto.createdAt, updatedAt: dto.updatedAt)
-        if event.id != dto.id { event.id = dto.id; context.insert(event) }
+        let event: CalendarEvent
+        if let existing = try context.fetch(FetchDescriptor<CalendarEvent>()).first(where: { $0.id == dto.id }) {
+            event = existing
+        } else {
+            event = CalendarEvent(id: dto.id, title: dto.title, notes: dto.notes,
+                                  start: dto.start, end: dto.end,
+                                  timeZoneIdentifier: dto.timeZoneIdentifier,
+                                  recurrence: CalendarEventRecurrence(rawValue: dto.recurrenceRawValue) ?? .none,
+                                  recurrenceEndDate: dto.recurrenceEndDate,
+                                  reminder: CalendarEventReminder(rawValue: dto.reminderRawValue) ?? .fifteenMinutes,
+                                  project: project, createdAt: dto.createdAt, updatedAt: dto.updatedAt)
+            context.insert(event)
+        }
         event.title = dto.title; event.notes = dto.notes
         event.start = dto.start; event.end = dto.end
         event.timeZoneIdentifier = dto.timeZoneIdentifier
@@ -683,21 +737,25 @@ enum SyncService {
         event.createdAt = dto.createdAt; event.updatedAt = dto.updatedAt
     }
 
-    private static func upsertCalendarEventException(_ dto: CalendarEventExceptionBackupDTO, context: ModelContext) throws {
+    static func upsertCalendarEventException(_ dto: CalendarEventExceptionBackupDTO, context: ModelContext) throws {
         guard let event = try context.fetch(FetchDescriptor<CalendarEvent>()).first(where: { $0.id == dto.eventID }) else { return }
         let project = dto.projectID.flatMap { id in
             (try? context.fetch(FetchDescriptor<Project>()))?.first { $0.id == id }
         }
-        let exception = try context.fetch(FetchDescriptor<CalendarEventException>()).first { $0.id == dto.id }
-            ?? CalendarEventException(id: dto.id, eventID: event.id, occurrenceDate: dto.occurrenceDate,
-                                      isDeleted: dto.isDeleted, titleOverride: dto.titleOverride, notesOverride: dto.notesOverride,
-                                      startOverride: dto.startOverride, endOverride: dto.endOverride,
-                                      timeZoneIdentifierOverride: dto.timeZoneIdentifierOverride,
-                                      reminderOverride: dto.reminderRawValueOverride.flatMap(CalendarEventReminder.init(rawValue:)),
-                                      projectOverrideSet: dto.projectOverrideSet ?? false,
-                                      project: project,
-                                      createdAt: dto.createdAt, updatedAt: dto.updatedAt)
-        if exception.id != dto.id { exception.id = dto.id; context.insert(exception) }
+        let exception: CalendarEventException
+        if let existing = try context.fetch(FetchDescriptor<CalendarEventException>()).first(where: { $0.id == dto.id }) {
+            exception = existing
+        } else {
+            exception = CalendarEventException(id: dto.id, eventID: event.id, occurrenceDate: dto.occurrenceDate,
+                                               isDeleted: dto.isDeleted, titleOverride: dto.titleOverride,
+                                               notesOverride: dto.notesOverride, startOverride: dto.startOverride,
+                                               endOverride: dto.endOverride,
+                                               timeZoneIdentifierOverride: dto.timeZoneIdentifierOverride,
+                                               reminderOverride: dto.reminderRawValueOverride.flatMap(CalendarEventReminder.init(rawValue:)),
+                                               projectOverrideSet: dto.projectOverrideSet ?? false,
+                                               project: project, createdAt: dto.createdAt, updatedAt: dto.updatedAt)
+            context.insert(exception)
+        }
         exception.eventID = event.id; exception.occurrenceDate = dto.occurrenceDate
         exception.isSkipped = dto.isDeleted; exception.titleOverride = dto.titleOverride; exception.notesOverride = dto.notesOverride
         exception.startOverride = dto.startOverride; exception.endOverride = dto.endOverride

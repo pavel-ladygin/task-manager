@@ -164,6 +164,16 @@ func (notifier *Notifier) ProcessNext(ctx context.Context) (bool, error) {
 	if err != nil || notification == nil {
 		return false, err
 	}
+	if notification.Kind == notificationMorning {
+		// A morning digest can wait in the durable queue until after the user
+		// changes a task. Rebuild it immediately before delivery so the message
+		// reflects the current heads, rather than the snapshot captured by Scan.
+		message, err := notifier.currentMorningDigest(ctx, *notification)
+		if err != nil {
+			return true, notifier.retry(ctx, *notification, "morning_revalidation")
+		}
+		notification.PayloadJSON = notificationPayload(message)
+	}
 	if notification.Kind == notificationReminder {
 		valid, err := notifier.reminderIsCurrent(ctx, *notification)
 		if err != nil {
@@ -181,6 +191,17 @@ func (notifier *Notifier) ProcessNext(ctx context.Context) (bool, error) {
 		return true, notifier.retry(ctx, *notification, "telegram_send")
 	}
 	return true, notifier.store.FinishTelegramNotification(ctx, notification.BotID, notification.EventKey, notification.AttemptCount, "done", "", now)
+}
+
+func (notifier *Notifier) currentMorningDigest(ctx context.Context, notification store.TelegramNotification) (string, error) {
+	heads, err := notifier.store.NotificationHeads(ctx)
+	if err != nil {
+		return "", err
+	}
+	tasks, projects := decodeNotificationHeads(heads)
+	localEvent := notification.EventTime.In(notifier.location)
+	dayStart := time.Date(localEvent.Year(), localEvent.Month(), localEvent.Day(), 0, 0, 0, 0, notifier.location)
+	return formatMorningDigest(tasks, projects, dayStart, notifier.location), nil
 }
 
 func notificationPayload(message string) string {

@@ -37,6 +37,74 @@ final class PlannerCoreTests: XCTestCase {
         XCTAssertNil(task.due)
     }
 
+    @MainActor
+    func testSyncPullDoesNotOverwriteEntityWithPendingLocalMutation() throws {
+        let container = try inMemoryContainer()
+        let context = container.mainContext
+        let settings = AppSettings()
+        let id = UUID()
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let task = PlannerTask(id: id, title: "Выполнено локально", status: .done, completedAt: now)
+        context.insert(settings)
+        context.insert(task)
+        context.insert(SyncEntityState(entityType: .task, entityID: id.uuidString, serverRevision: 12, payloadHash: "local-hash"))
+        context.insert(SyncOutboxItem(
+            entityType: .task, entityID: id.uuidString, operation: .upsert,
+            payloadJSON: "{\"status\":\"done\"}", baseRevision: 12
+        ))
+        try context.save()
+
+        let serverDTO = TaskBackupDTO(
+            id: id, title: "Старое серверное состояние", notes: "", status: TaskStatus.planned.rawValue,
+            priority: Priority.none.rawValue, recurrence: TaskRecurrence.none.rawValue,
+            recurrenceSeriesID: nil, recurrenceAnchorDate: nil, recurrenceSequence: 0,
+            showInKanban: true, scheduled: now, due: nil, createdAt: now, updatedAt: now,
+            completedAt: nil, projectID: nil, tagIDs: [], checklistItems: [], manualOrder: 0
+        )
+        let payload = try JSONDecoder().decode(JSONValue.self, from: SyncClient.encoder.encode(serverDTO))
+        let change = SyncServerChangeDTO(
+            revision: 13, entityType: SyncEntityType.task.rawValue, entityID: id.uuidString,
+            operation: SyncMutationOperation.upsert.rawValue, payload: payload,
+            sourceDeviceID: "other-device", serverUpdatedAt: now
+        )
+
+        try SyncService.apply(changes: [change], context: context, settings: settings)
+
+        XCTAssertEqual(task.status, .done)
+        XCTAssertEqual(task.title, "Выполнено локально")
+        let state = try XCTUnwrap(context.fetch(FetchDescriptor<SyncEntityState>()).first)
+        XCTAssertEqual(state.serverRevision, 12)
+        XCTAssertEqual(try context.fetch(FetchDescriptor<SyncOutboxItem>()).first?.baseRevision, 12)
+    }
+
+    @MainActor
+    func testSyncPullDoesNotDeleteEntityWithPendingLocalDeletion() throws {
+        let container = try inMemoryContainer()
+        let context = container.mainContext
+        let settings = AppSettings()
+        let id = UUID()
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let task = PlannerTask(id: id, title: "Удаляется локально")
+        context.insert(settings)
+        context.insert(task)
+        context.insert(SyncEntityState(entityType: .task, entityID: id.uuidString, serverRevision: 20, payloadHash: "hash"))
+        context.insert(SyncOutboxItem(
+            entityType: .task, entityID: id.uuidString, operation: .delete,
+            payloadJSON: nil, baseRevision: 20
+        ))
+        try context.save()
+
+        let change = SyncServerChangeDTO(
+            revision: 21, entityType: SyncEntityType.task.rawValue, entityID: id.uuidString,
+            operation: SyncMutationOperation.delete.rawValue, payload: nil,
+            sourceDeviceID: "other-device", serverUpdatedAt: now
+        )
+        try SyncService.apply(changes: [change], context: context, settings: settings)
+
+        XCTAssertNotNil(try context.fetch(FetchDescriptor<PlannerTask>()).first { $0.id == id })
+        XCTAssertEqual(try context.fetch(FetchDescriptor<SyncEntityState>()).first?.serverRevision, 20)
+    }
+
     func testWeekdaysSkipsWeekend() throws {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!
@@ -338,6 +406,43 @@ final class PlannerCoreTests: XCTestCase {
         XCTAssertEqual(calendar.component(.hour, from: moved), 23)
     }
 
+    func testCalendarExcludesCompletedAndCancelledTasks() throws {
+        let scheduled = Date(timeIntervalSince1970: 1_800_000_000)
+        let active = PlannerTask(title: "Active", scheduled: scheduled)
+        let completed = PlannerTask(title: "Done", status: .done, scheduled: scheduled)
+        let cancelled = PlannerTask(title: "Cancelled", status: .cancelled, scheduled: scheduled)
+        let week = CalendarService.week(containing: scheduled)
+
+        let placements = CalendarService.placements(
+            from: [active, completed, cancelled], searchText: "", week: week
+        )
+        XCTAssertEqual(placements.map(\.task.id), [active.id])
+    }
+
+    @MainActor
+    func testSyncUpsertInsertsNewCalendarEvent() throws {
+        let container = try inMemoryContainer()
+        let context = container.mainContext
+        let id = UUID()
+        let start = Date(timeIntervalSince1970: 1_800_000_000)
+        let dto = CalendarEventBackupDTO(
+            id: id, title: "Server lesson", notes: "Room 101",
+            start: start, end: start.addingTimeInterval(5_400),
+            timeZoneIdentifier: "Europe/Moscow", recurrenceRawValue: "weekly",
+            recurrenceEndDate: start.addingTimeInterval(90 * 86_400),
+            projectID: nil, reminderRawValue: -1,
+            createdAt: start, updatedAt: start
+        )
+
+        try SyncService.upsertCalendarEvent(dto, context: context)
+        try context.save()
+
+        let events = try context.fetch(FetchDescriptor<CalendarEvent>())
+        XCTAssertEqual(events.count, 1)
+        XCTAssertEqual(events.first?.id, id)
+        XCTAssertEqual(events.first?.title, "Server lesson")
+    }
+
     @MainActor
     func testWeeklyCalendarEventProducesVirtualOccurrencesWithoutTasks() throws {
         let container = try inMemoryContainer()
@@ -398,12 +503,39 @@ final class PlannerCoreTests: XCTestCase {
             try container.mainContext.save()
         }
 
-        let schema = Schema(versionedSchema: PlannerSchemaV3.self)
+        let schema = Schema(versionedSchema: PlannerSchemaV4.self)
         let configuration = ModelConfiguration("V2", schema: schema, url: url)
         let migrated = try ModelContainer(for: schema, migrationPlan: PlannerMigrationPlan.self, configurations: [configuration])
         let tasks = try migrated.mainContext.fetch(FetchDescriptor<PlannerTask>())
         XCTAssertEqual(tasks.first?.title, "Before migration")
         XCTAssertEqual(tasks.first?.showInKanban, true)
+    }
+
+    @MainActor
+    func testV3CalendarExceptionMigratesToV4WithoutLosingSkipFlag() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("migration.store")
+        let eventID = UUID()
+
+        do {
+            let schema = Schema(versionedSchema: PlannerSchemaV3.self)
+            let configuration = ModelConfiguration("V3", schema: schema, url: url)
+            let container = try ModelContainer(for: schema, configurations: [configuration])
+            let exception = PlannerSchemaV3.CalendarEventException()
+            exception.eventID = eventID
+            exception.isDeleted = true
+            container.mainContext.insert(exception)
+            try container.mainContext.save()
+        }
+
+        let schema = Schema(versionedSchema: PlannerSchemaV4.self)
+        let configuration = ModelConfiguration("V4", schema: schema, url: url)
+        let migrated = try ModelContainer(for: schema, migrationPlan: PlannerMigrationPlan.self, configurations: [configuration])
+        let exception = try XCTUnwrap(migrated.mainContext.fetch(FetchDescriptor<CalendarEventException>()).first)
+        XCTAssertEqual(exception.eventID, eventID)
+        XCTAssertTrue(exception.isSkipped)
     }
 
     @MainActor
@@ -438,7 +570,7 @@ final class PlannerCoreTests: XCTestCase {
 
     @MainActor
     private func inMemoryContainer() throws -> ModelContainer {
-        let schema = Schema(versionedSchema: PlannerSchemaV3.self)
+        let schema = Schema(versionedSchema: PlannerSchemaV4.self)
         return try ModelContainer(
             for: schema,
             migrationPlan: PlannerMigrationPlan.self,

@@ -140,6 +140,30 @@ func TestNotifierProcessRetriesAndRevalidatesReminder(t *testing.T) {
 	}
 }
 
+func TestNotifierProcessRefreshesMorningDigestFromCurrentHeads(t *testing.T) {
+	loc := time.FixedZone("MSK", 3*60*60)
+	day := time.Date(2026, 9, 8, 0, 0, 0, 0, loc)
+	noon := day.Add(12 * time.Hour).Format(time.RFC3339Nano)
+	task := notificationTask{ID: "t1", Title: "Завершить задачу", Status: "planned", Scheduled: &noon}
+	n := store.TelegramNotification{
+		BotID: "bot", EventKey: "morning:2026-09-08", ChatID: 7,
+		Kind: notificationMorning, EventTime: day.Add(7 * time.Hour),
+		// This is the stale snapshot captured at enqueue time.
+		PayloadJSON: notificationPayload(formatMorningDigest([]notificationTask{task}, nil, day, loc)),
+	}
+	f := &fakeNotifierStore{heads: headsFor([]notificationTask{{ID: "t1", Title: task.Title, Status: "done", Scheduled: &noon}}), queue: []*store.TelegramNotification{&n}}
+	s := &fakeSender{}
+	notifier := NewNotifier(f, s, "bot", 7, loc, nil)
+	notifier.now = func() time.Time { return day.Add(8 * time.Hour) }
+	worked, err := notifier.ProcessNext(context.Background())
+	if err != nil || !worked || len(s.messages) != 1 {
+		t.Fatalf("morning delivery worked=%v err=%v messages=%v", worked, err, s.messages)
+	}
+	if strings.Contains(s.messages[0], task.Title) || !strings.Contains(s.messages[0], "Сегодня задач нет") {
+		t.Fatalf("stale completed task was delivered: %s", s.messages[0])
+	}
+}
+
 func ptr(s string) *string { return &s }
 func headsFor(tasks []notificationTask) []store.Change {
 	out := make([]store.Change, 0, len(tasks))
