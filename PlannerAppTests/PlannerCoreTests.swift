@@ -4,6 +4,12 @@ import XCTest
 @testable import PlannerApp_macOS
 
 final class PlannerCoreTests: XCTestCase {
+    func testPlannerStoreUsesAppSpecificLocation() {
+        XCTAssertEqual(PlannerStoreLocation.storeURL.lastPathComponent, "Planner.store")
+        XCTAssertEqual(PlannerStoreLocation.storeURL.deletingLastPathComponent().lastPathComponent, "PlannerApp")
+        XCTAssertNotEqual(PlannerStoreLocation.storeURL.lastPathComponent, "default.store")
+    }
+
     func testTelegramTaskPayloadDecodesAsSyncTask() throws {
         let json = """
         {

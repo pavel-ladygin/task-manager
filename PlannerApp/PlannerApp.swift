@@ -43,7 +43,11 @@ final class PlannerStoreBootstrap: ObservableObject {
     @Published private(set) var diagnosticText = ""
 
     private let schema = Schema(versionedSchema: PlannerSchemaV3.self)
-    private lazy var configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+    private lazy var configuration = ModelConfiguration(
+        "Planner",
+        schema: schema,
+        url: PlannerStoreLocation.storeURL
+    )
 
     init() { load() }
 
@@ -63,17 +67,26 @@ final class PlannerStoreBootstrap: ObservableObject {
         container = nil
         errorMessage = nil
         do {
+            try PlannerStoreLocation.prepareDirectory()
+            let isNewStore = !FileManager.default.fileExists(atPath: configuration.url.path)
             if createBackup {
                 latestBackupURL = try PlannerStoreBackup.snapshotIfNeeded(storeURL: configuration.url)
             } else {
-                latestBackupURL = PlannerStoreBackup.latestBackup()
+                latestBackupURL = PlannerStoreBackup.latestBackup(for: configuration.url)
             }
             let candidate = try ModelContainer(
                 for: schema,
                 migrationPlan: PlannerMigrationPlan.self,
                 configurations: [configuration]
             )
-            _ = try PlannerDataService.ensureAppSettings(context: candidate.mainContext)
+            let settings = try PlannerDataService.ensureAppSettings(context: candidate.mainContext)
+            if isNewStore, !KeychainService.loadSyncToken().isEmpty {
+                settings.syncEnabled = true
+                settings.syncServerURL = PlannerWidgetShared.serverURL.absoluteString
+                settings.syncCertificateFingerprint = PlannerWidgetShared.certificateFingerprint
+                settings.updatedAt = .now
+                try candidate.mainContext.save()
+            }
             try PlannerStoreValidator.validate(candidate)
             let events = try candidate.mainContext.fetch(FetchDescriptor<CalendarEvent>())
             let exceptions = try candidate.mainContext.fetch(FetchDescriptor<CalendarEventException>())
@@ -85,7 +98,7 @@ final class PlannerStoreBootstrap: ObservableObject {
             }
             container = candidate
         } catch {
-            latestBackupURL = PlannerStoreBackup.latestBackup()
+            latestBackupURL = PlannerStoreBackup.latestBackup(for: configuration.url)
             errorMessage = error.localizedDescription
             diagnosticText = [
                 "PlannerApp store recovery diagnostic",
@@ -95,6 +108,27 @@ final class PlannerStoreBootstrap: ObservableObject {
                 "Error: \(String(reflecting: error))"
             ].joined(separator: "\n")
         }
+    }
+}
+
+enum PlannerStoreLocation {
+    static var directoryURL: URL {
+        let applicationSupport = FileManager.default.urls(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask
+        ).first!
+        return applicationSupport.appendingPathComponent("PlannerApp", isDirectory: true)
+    }
+
+    static var storeURL: URL {
+        directoryURL.appendingPathComponent("Planner.store", isDirectory: false)
+    }
+
+    static func prepareDirectory() throws {
+        try FileManager.default.createDirectory(
+            at: directoryURL,
+            withIntermediateDirectories: true
+        )
     }
 }
 
@@ -205,7 +239,9 @@ private enum PlannerStoreBackup {
 
     static func snapshotIfNeeded(storeURL: URL) throws -> URL? {
         let fileManager = FileManager.default
-        guard fileManager.fileExists(atPath: storeURL.path), let backupRoot else { return latestBackup() }
+        guard fileManager.fileExists(atPath: storeURL.path), let backupRoot else {
+            return latestBackup(for: storeURL)
+        }
         try fileManager.createDirectory(at: backupRoot, withIntermediateDirectories: true)
 
         let formatter = ISO8601DateFormatter()
@@ -229,13 +265,20 @@ private enum PlannerStoreBackup {
         return destination
     }
 
-    static func latestBackup() -> URL? {
+    static func latestBackup(for storeURL: URL) -> URL? {
         guard let backupRoot else { return nil }
         return try? FileManager.default.contentsOfDirectory(
             at: backupRoot,
             includingPropertiesForKeys: [.isDirectoryKey],
             options: [.skipsHiddenFiles]
-        ).filter { $0.hasDirectoryPath }.sorted { $0.lastPathComponent > $1.lastPathComponent }.first
+        ).filter { directory in
+            guard directory.hasDirectoryPath,
+                  let data = try? Data(contentsOf: directory.appendingPathComponent("manifest.json")),
+                  let manifest = try? JSONDecoder().decode([String: String].self, from: data) else {
+                return false
+            }
+            return manifest[storeURL.lastPathComponent] != nil
+        }.sorted { $0.lastPathComponent > $1.lastPathComponent }.first
     }
 
     static func restore(backupDirectory: URL, storeURL: URL) throws {
